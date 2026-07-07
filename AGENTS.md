@@ -16,10 +16,17 @@ reference. This file adds the rules specific to writing code here.
    acceptance test; writing semantics first inverts the contract.
    Scaffolding, plugin interfaces, CLI skeletons, and fixtures are fine.
 2. **Never emit an attestation** — even in tests marked temporary — with a
-   placeholder predicate-type URI. The URI freezes at first emission; it
-   is unset until the project domain is registered. Use fake local URIs
-   only in clearly-labeled test doubles that cannot escape the test tree.
-3. **Pin the spec version** this code targets (currently draft v0.1) in
+   placeholder predicate-type URI. The real URIs are bound and frozen at
+   v0.1 (spec ADR-013; maintainer freeze decision 2026-07-06):
+   `https://semver-trust.dev/release/v0.1` and
+   `https://semver-trust.dev/review/v0.1`. Their additive-only evolution
+   policy lives in the spec repository at
+   <https://github.com/semver-trust/spec/blob/main/schemas/README.md>.
+   Test fixtures use the real URIs with fake local subjects and test-only
+   keys, per the spec repository's crypto fixture plan — a compliant
+   fixture is a clearly-labeled test double that cannot escape the test
+   tree.
+3. **Pin the spec version** this code targets (currently draft v0.2) in
    one place; conformance is always claimed against a stated version.
 
 ## Provenance discipline (this repo dogfoods the scheme)
