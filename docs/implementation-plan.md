@@ -197,7 +197,10 @@ resolve them by writing code that assumes an answer.
 - **GO-041 [A] `policy` (validate/explain) and plain-mode `list|latest|next|tag`**
   (the go-semver surface, working with zero configuration). *Accept:*
   plain-mode works in a repo with no policy.toml; `policy explain` prints the
-  decision table in effect.
+  decision table in effect. Out-of-grammar tags (build metadata, malformed
+  trust shapes) are tolerated for display/list parity; trust operations
+  refuse them (maintainer decision 2026-07-07: canonical parse rejects
+  build metadata — alias-attack surface; rejection is scoped per surface).
 - **GO-042 [A] `release`.** Evaluate → decide → signed annotated tag →
   release attestation (real predicate URIs only) → store. *Accept:* spec §10
   steps 8–9; emitted attestation validates against `release-v0.1.json`;
@@ -212,7 +215,9 @@ resolve them by writing code that assumes an answer.
   reconstruct review facts; compute would-have-been trust profiles over
   existing history at an injected clock. *Accept:* profile of this repo and
   of one public OSS repo produced; caveats section auto-emitted (what could
-  not be verified and why — P2 honesty).
+  not be verified and why — P2 honesty). Foreign-repo histories legitimately
+  contain out-of-grammar tags (npm-style `+metadata`); the retro path
+  classifies them as out-of-grammar in the caveats and never crashes.
 - **GO-052 [M] E2 study design.** How retro profiles get compared to
   CVE/incident data (spec §12.8). Design doc only; execution is post-1.0.
 
