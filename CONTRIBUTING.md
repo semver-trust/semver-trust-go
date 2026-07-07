@@ -1,7 +1,7 @@
 # Contributing
 
 semver-trust-go is pre-implementation, tracking SemVer-Trust spec draft
-v0.1. Feedback and design discussion are welcome as issues.
+v0.2. Feedback and design discussion are welcome as issues.
 
 Pull requests: contribution terms (CLA or DCO) are being finalized and
 will be documented here before external PRs are merged.
