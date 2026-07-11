@@ -77,6 +77,17 @@ func compileGlobs(patterns []string) (map[string]*regexp.Regexp, error) {
 	return compiled, nil
 }
 
+// MatchGlob reports whether a §5.1-style glob matches a slash-separated
+// path — the same segment-aware semantics scope partitioning uses, exported
+// for the derivation runner's input/output path matching (§4.4).
+func MatchGlob(pattern, path string) (bool, error) {
+	rx, err := compileGlob(pattern)
+	if err != nil {
+		return false, err
+	}
+	return rx.MatchString(path), nil
+}
+
 func compileGlob(pattern string) (*regexp.Regexp, error) {
 	if pattern == "" {
 		return nil, fmt.Errorf("empty path glob")
