@@ -1,0 +1,71 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+#
+# GO-050: run the semver-trust-verify action on this repo's own PRs, plus a
+# fixture job proving the verified path end-to-end.
+name: SemVer-Trust verify
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Dogfood on this repository. Until D3/GO-061 land a .semver-trust/policy.toml
+  # here — and because the pre-ADR-023 history contains web-flow merges — this
+  # repo's own verify honestly ABORTS at §10 step 1. informational: 'true'
+  # keeps the job green while the summary and badge report "unverifiable"
+  # truthfully; the action never fakes a pass (P4).
+  self-verify:
+    name: self-verify (informational)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history — verify walks the release range)
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Verify this repository (informational)
+        uses: ./.github/actions/semver-trust-verify
+        with:
+          informational: 'true'
+
+  # The verified path, end-to-end: build the deterministic release fixture
+  # (ADR-021 vendored recipe) and verify it for real — informational: 'false',
+  # so an abort would fail this job. The fixture's range floors to T0
+  # (one agent commit, no review), so the badge reads "T0 ✓" (red: verified,
+  # zero accountable humans — ADR-019 orders accountability, not pass/fail).
+  fixture-verify:
+    name: fixture-verify (enforced)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+
+      - name: Build deterministic release fixture
+        run: bash conformance/vendor/crypto/build-fixture-repos.sh "$RUNNER_TEMP/fixtures"
+
+      - name: Verify the release fixture (enforced)
+        id: fixture
+        uses: ./.github/actions/semver-trust-verify
+        with:
+          repo-path: ${{ runner.temp }}/fixtures/release
+          from: v0.1.0
+          to: main
+          allowed-signers: conformance/vendor/crypto/allowed_signers
+          verify-time: '2026-01-01T00:00:00Z'
+          informational: 'false'
+          badge-artifact: semver-trust-badge-fixture
+
+      - name: Assert verified at T0
+        env:
+          OUTCOME: ${{ steps.fixture.outputs.outcome }}
+          EFFECTIVE: ${{ steps.fixture.outputs.effective }}
+        run: |-
+          set -euo pipefail
+          if [ "${OUTCOME}" != verified ] || [ "${EFFECTIVE}" != T0 ]; then
+            echo "::error::expected verified at T0, got outcome=${OUTCOME} effective=${EFFECTIVE}"
+            exit 1
+          fi
+          echo "fixture verified at effective T0, as pinned."
