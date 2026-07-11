@@ -1,0 +1,147 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.2",
+  "description": "Transitive-propagation vectors for SemVer-Trust (spec/semver-trust.md §5.3). Each vector carries an internal dependency graph — nodes with per-component own trust, directed edges [consumer, dependency] — and asserts the effective trust of every node: effective(C) = min(own(C), min over deps D of effective(D)), with dependency cycles collapsed to their strongly connected component. Where 'floor_source' is asserted it names, per node, the component whose own trust set the floor (the node itself when its own trust attains the minimum).",
+  "vectors": [
+    {
+      "id": "propagation/no-edges",
+      "kind": "propagation",
+      "description": "Without dependency edges, effective trust equals own trust: propagation flows only along the graph.",
+      "spec": "§5.3",
+      "inputs": {
+        "nodes": { "auth": "T3", "billing": "T2", "common": "T0" },
+        "edges": []
+      },
+      "expected": {
+        "effective": { "auth": "T3", "billing": "T2", "common": "T0" },
+        "floor_source": { "auth": "auth", "billing": "billing", "common": "common" }
+      }
+    },
+    {
+      "id": "propagation/appendix-a-pre-promotion",
+      "kind": "propagation",
+      "description": "Appendix A step 2: auth's five human-reviewed commits give own(auth) = T3, but auth depends on common at own(common) = T0, so effective(auth) = min(T3, T0) = T0 with common as the floor source. (billing's own trust is unstated in Appendix A steps 1-4 and is omitted here; the full auth/billing/common fan-out shape is exercised by propagation/shared-dependency-fanout.)",
+      "spec": "Appendix A",
+      "inputs": {
+        "nodes": { "auth": "T3", "common": "T0" },
+        "edges": [["auth", "common"]]
+      },
+      "expected": {
+        "effective": { "auth": "T0", "common": "T0" },
+        "floor_source": { "auth": "common", "common": "common" }
+      }
+    },
+    {
+      "id": "propagation/appendix-a-post-promotion",
+      "kind": "propagation",
+      "description": "Appendix A steps 3-4: a post-hoc review attestation lifts own(common) to T2; the cascade re-evaluation gives effective(auth) = min(own T3, common T2) = T2. Same graph, new evidence, no source rebuild.",
+      "spec": "Appendix A",
+      "inputs": {
+        "nodes": { "auth": "T3", "common": "T2" },
+        "edges": [["auth", "common"]]
+      },
+      "expected": {
+        "effective": { "auth": "T2", "common": "T2" },
+        "floor_source": { "auth": "common", "common": "common" }
+      }
+    },
+    {
+      "id": "propagation/shared-dependency-fanout",
+      "kind": "propagation",
+      "description": "The Appendix A workspace shape with both services present: one under-trusted shared library floors every consumer — shared packages are where human review buys the most trust, because their level multiplies across every consumer.",
+      "spec": "§5.3",
+      "inputs": {
+        "nodes": { "auth": "T3", "billing": "T3", "common": "T1" },
+        "edges": [["auth", "common"], ["billing", "common"]]
+      },
+      "expected": {
+        "effective": { "auth": "T1", "billing": "T1", "common": "T1" },
+        "floor_source": { "auth": "common", "billing": "common", "common": "common" }
+      }
+    },
+    {
+      "id": "propagation/chain-transitivity",
+      "kind": "propagation",
+      "description": "The floor propagates transitively, not just across direct edges: a T1 leaf floors a consumer two hops away.",
+      "spec": "§5.3",
+      "inputs": {
+        "nodes": { "app": "T3", "middleware": "T3", "leaf": "T1" },
+        "edges": [["app", "middleware"], ["middleware", "leaf"]]
+      },
+      "expected": {
+        "effective": { "app": "T1", "middleware": "T1", "leaf": "T1" },
+        "floor_source": { "app": "leaf", "middleware": "leaf", "leaf": "leaf" }
+      }
+    },
+    {
+      "id": "propagation/diamond",
+      "kind": "propagation",
+      "description": "Diamond graph: the consumer's floor is the minimum across both branches; the base does not inherit its consumers' levels (propagation follows dependency direction only).",
+      "spec": "§5.3",
+      "inputs": {
+        "nodes": { "app": "T3", "lib-a": "T3", "lib-b": "T2", "base": "T3" },
+        "edges": [["app", "lib-a"], ["app", "lib-b"], ["lib-a", "base"], ["lib-b", "base"]]
+      },
+      "expected": {
+        "effective": { "app": "T2", "lib-a": "T3", "lib-b": "T2", "base": "T3" },
+        "floor_source": { "app": "lib-b", "lib-a": "lib-a", "lib-b": "lib-b", "base": "base" }
+      }
+    },
+    {
+      "id": "propagation/own-floor-wins",
+      "kind": "propagation",
+      "description": "When a component's own trust is already the minimum, its dependencies do not lower it further and the floor source is the component itself.",
+      "spec": "§5.3",
+      "inputs": {
+        "nodes": { "app": "T0", "lib": "T3" },
+        "edges": [["app", "lib"]]
+      },
+      "expected": {
+        "effective": { "app": "T0", "lib": "T3" },
+        "floor_source": { "app": "app", "lib": "lib" }
+      }
+    },
+    {
+      "id": "propagation/scc-cycle",
+      "kind": "propagation",
+      "description": "A dependency cycle collapses to its strongly connected component: every member of the SCC shares the SCC's minimum own trust, regardless of position in the cycle.",
+      "spec": "§5.3",
+      "inputs": {
+        "nodes": { "x": "T3", "y": "T2", "z": "T0" },
+        "edges": [["x", "y"], ["y", "z"], ["z", "x"]]
+      },
+      "expected": {
+        "effective": { "x": "T0", "y": "T0", "z": "T0" },
+        "floor_source": { "x": "z", "y": "z", "z": "z" }
+      }
+    },
+    {
+      "id": "propagation/scc-with-downstream-consumer",
+      "kind": "propagation",
+      "description": "An SCC floors its consumers like any other dependency: a component outside the cycle that depends on any member inherits the SCC minimum; an upstream dependency of the cycle is unaffected.",
+      "spec": "§5.3",
+      "inputs": {
+        "nodes": { "consumer": "T3", "x": "T3", "y": "T1", "base": "T3" },
+        "edges": [["consumer", "x"], ["x", "y"], ["y", "x"], ["y", "base"]]
+      },
+      "expected": {
+        "effective": { "consumer": "T1", "x": "T1", "y": "T1", "base": "T3" },
+        "floor_source": { "consumer": "y", "x": "y", "y": "y", "base": "base" }
+      }
+    },
+    {
+      "id": "propagation/two-sccs-chained",
+      "kind": "propagation",
+      "description": "Two cycles connected by a one-way edge remain distinct SCCs: the downstream cycle's floor propagates into the upstream one, not the reverse.",
+      "spec": "§5.3",
+      "inputs": {
+        "nodes": { "a": "T3", "b": "T2", "c": "T3", "d": "T1" },
+        "edges": [["a", "b"], ["b", "a"], ["b", "c"], ["c", "d"], ["d", "c"]]
+      },
+      "expected": {
+        "effective": { "a": "T1", "b": "T1", "c": "T1", "d": "T1" },
+        "floor_source": { "a": "d", "b": "d", "c": "d", "d": "d" }
+      }
+    }
+  ]
+}

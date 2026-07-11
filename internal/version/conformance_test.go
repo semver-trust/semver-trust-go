@@ -10,11 +10,11 @@ import (
 	"testing"
 )
 
-// The conformance vectors are the spec repository's acceptance suite. This smoke
-// test consumes them when they are reachable but stays hermetic: the durable,
-// version-pinned harness that vendors the vectors is GO-026. Point it at the
-// vectors with SEMVER_TRUST_VECTORS, or drop them at testdata/precedence.json;
-// absent both, the test skips.
+// The conformance vectors are the spec repository's acceptance suite,
+// consumed from the ADR-021 vendored copy (conformance/vendor/, digest-pinned
+// by conformance/manifest.json — GO-026). SEMVER_TRUST_VECTORS or a
+// testdata/precedence.json drop-in override the vendored copy for testing
+// against unreleased vectors.
 
 type vectorFile struct {
 	SpecVersion string   `json:"spec_version"`
@@ -46,13 +46,18 @@ func loadVectors(t *testing.T) vectorFile {
 
 	path := os.Getenv("SEMVER_TRUST_VECTORS")
 	if path == "" {
-		candidate := filepath.Join("testdata", "precedence.json")
-		if _, err := os.Stat(candidate); err == nil {
-			path = candidate
+		for _, candidate := range []string{
+			filepath.Join("testdata", "precedence.json"),
+			filepath.Join("..", "..", "conformance", "vendor", "precedence.json"),
+		} {
+			if _, err := os.Stat(candidate); err == nil {
+				path = candidate
+				break
+			}
 		}
 	}
 	if path == "" {
-		t.Skip("conformance vectors absent; set SEMVER_TRUST_VECTORS or vendor testdata/precedence.json (GO-026)")
+		t.Fatal("conformance vectors absent: conformance/vendor/precedence.json missing (refresh via scripts/sync-conformance.py)")
 	}
 
 	data, err := os.ReadFile(path)

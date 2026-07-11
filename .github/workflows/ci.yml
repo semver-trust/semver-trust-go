@@ -55,5 +55,10 @@ jobs:
       - name: Test
         run: devbox run -- task test
 
+      # ADR-021: the vendored conformance vectors must match their manifest
+      # digests, and the implementation must pass every vector (GO-026).
+      - name: Conformance
+        run: devbox run -- task conformance
+
       - name: Vulnerability scan
         run: devbox run -- task vuln

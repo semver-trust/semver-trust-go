@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+"""sync-conformance.py — refresh the vendored conformance artifacts (ADR-021).
+
+Fetches the spec repository's conformance vectors at an exact commit, writes
+them under ``conformance/vendor/``, and records the pin — source commit plus a
+SHA-256 per file — in ``conformance/manifest.json``, the single place this
+implementation pins its spec version. CI verifies the vendored bytes against
+the manifest (``go test ./conformance/...``); this script is the only
+sanctioned way to change them.
+
+    python3 scripts/sync-conformance.py <spec-commit-sha>
+
+Network access is deliberate and explicit here — the sync task is the one
+place refreshing happens (ADR-021); tests and verification never fetch.
+Requires Python 3.11+, stdlib only.
+"""
+
+import hashlib
+import json
+import re
+import sys
+import urllib.request
+from pathlib import Path
+
+REPO_URL = "https://github.com/semver-trust/spec"
+RAW_BASE = "https://raw.githubusercontent.com/semver-trust/spec"
+FILES = (
+    "levels.json",
+    "precedence.json",
+    "aggregation.json",
+    "propagation.json",
+    "decision.json",
+    "LICENSE",
+)
+
+ROOT = Path(__file__).resolve().parent.parent
+VENDOR = ROOT / "conformance" / "vendor"
+MANIFEST = ROOT / "conformance" / "manifest.json"
+
+
+def fetch(commit: str, name: str) -> bytes:
+    url = f"{RAW_BASE}/{commit}/conformance/{name}"
+    with urllib.request.urlopen(url) as resp:
+        return resp.read()
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or not re.fullmatch(r"[0-9a-f]{40}", sys.argv[1]):
+        print("usage: sync-conformance.py <full 40-char spec commit sha>", file=sys.stderr)
+        return 2
+    commit = sys.argv[1]
+
+    VENDOR.mkdir(parents=True, exist_ok=True)
+    digests: dict[str, str] = {}
+    spec_version = None
+    for name in FILES:
+        data = fetch(commit, name)
+        (VENDOR / name).write_bytes(data)
+        digests[name] = "sha256:" + hashlib.sha256(data).hexdigest()
+        if name == "levels.json":
+            spec_version = json.loads(data)["spec_version"]
+        print(f"  {digests[name]}  {name}")
+
+    manifest = {
+        "$comment": "SPDX-License-Identifier: Apache-2.0",
+        "spec_version": spec_version,
+        "source": {"repository": REPO_URL, "commit": commit},
+        "files": digests,
+    }
+    MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    print(f"pinned spec draft v{spec_version} at {REPO_URL}@{commit[:12]}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

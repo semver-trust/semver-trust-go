@@ -1,0 +1,483 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.2",
+  "description": "Release-decision vectors for SemVer-Trust (spec/semver-trust.md §6.1-§6.4, §7.1, Appendix A), encoding the §6.4 default decision table (the illustrative policy; tuned tables are out of scope). Inputs: effective trust, qualitative blast score, strategy, differ availability, the §6.1 semantic floor, the claimed bump, the previous release tag, and the trust-suffix iteration for this cut. Expected: the channel, the final bump (max of claim and semantic floor — the floor is honored unconditionally), and the exact §7.1 tag. 'Differ proof required' cells resolve to pre-release when no differ is available (§1.1 honest degradation); the requirement is qualified to PATCH claims where the table says so, and unqualified on the T1/low cell. Under 'inflate', vectors assert whether the bump escalates ('escalate'); the escalation target (MINOR vs MAJOR) is a policy choice per §6.3, so escalated vectors carry null bump/version.",
+  "vectors": [
+    {
+      "id": "decision/table/t3-low",
+      "kind": "decision",
+      "description": "T3 x low: clean, unconditionally.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T3",
+        "blast": "low",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "patch", "version": "v1.2.4" }
+    },
+    {
+      "id": "decision/table/t3-moderate",
+      "kind": "decision",
+      "description": "T3 x moderate: clean, unconditionally.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T3",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "patch", "version": "v1.2.4" }
+    },
+    {
+      "id": "decision/table/t3-high",
+      "kind": "decision",
+      "description": "T3 x high: clean — the differ proof REQUIRED for the PATCH claim is present.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T3",
+        "blast": "high",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "patch", "version": "v1.2.4" }
+    },
+    {
+      "id": "decision/table/t2-low",
+      "kind": "decision",
+      "description": "T2 x low: clean, unconditionally.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T2",
+        "blast": "low",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "patch", "version": "v1.2.4" }
+    },
+    {
+      "id": "decision/table/t2-moderate",
+      "kind": "decision",
+      "description": "T2 x moderate: clean — the differ proof required for the PATCH claim is present.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T2",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "patch", "version": "v1.2.4" }
+    },
+    {
+      "id": "decision/table/t2-high",
+      "kind": "decision",
+      "description": "T2 x high: pre-release — high blast at T2 demotes regardless of differ evidence.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T2",
+        "blast": "high",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t2.1" }
+    },
+    {
+      "id": "decision/table/t1-low",
+      "kind": "decision",
+      "description": "T1 x low: clean — the (unqualified) differ proof requirement is satisfied.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T1",
+        "blast": "low",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "patch", "version": "v1.2.4" }
+    },
+    {
+      "id": "decision/table/t1-moderate",
+      "kind": "decision",
+      "description": "T1 x moderate: pre-release.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T1",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t1.1" }
+    },
+    {
+      "id": "decision/table/t1-high",
+      "kind": "decision",
+      "description": "T1 x high: pre-release.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T1",
+        "blast": "high",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t1.1" }
+    },
+    {
+      "id": "decision/table/t0-low",
+      "kind": "decision",
+      "description": "T0 x low: pre-release — no accountable human, opt-in by construction.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T0",
+        "blast": "low",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t0.1" }
+    },
+    {
+      "id": "decision/table/t0-moderate",
+      "kind": "decision",
+      "description": "T0 x moderate: pre-release.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T0",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t0.1" }
+    },
+    {
+      "id": "decision/table/t0-high",
+      "kind": "decision",
+      "description": "T0 x high: pre-release.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T0",
+        "blast": "high",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t0.1" }
+    },
+    {
+      "id": "decision/degrade/t3-high-patch-no-differ",
+      "kind": "decision",
+      "description": "Honest degradation at the top level: T3 x high REQUIRES a differ proof for a PATCH claim; with no differ available even a T3 release demotes to the pre-release channel.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T3",
+        "blast": "high",
+        "strategy": "demote",
+        "differ_available": false,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t3.1" }
+    },
+    {
+      "id": "decision/degrade/t2-moderate-patch-no-differ",
+      "kind": "decision",
+      "description": "T2 x moderate with a PATCH claim and no differ: the required proof cannot exist, so the cell resolves to pre-release — less verification tooling means lower provable trust, not equal trust with less backing.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T2",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": false,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t2.1" }
+    },
+    {
+      "id": "decision/degrade/t1-low-minor-no-differ",
+      "kind": "decision",
+      "description": "The T1 x low differ requirement is unqualified — it applies to any claim, not just PATCH: a MINOR claim without a differ demotes.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T1",
+        "blast": "low",
+        "strategy": "demote",
+        "differ_available": false,
+        "semantic_floor": "minor",
+        "claimed_bump": "minor",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "minor", "version": "v1.3.0-t1.1" }
+    },
+    {
+      "id": "decision/degrade/t2-moderate-minor-no-differ",
+      "kind": "decision",
+      "description": "The T2 x moderate differ requirement is qualified to PATCH claims: a MINOR claim goes clean without a differ.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T2",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": false,
+        "semantic_floor": "minor",
+        "claimed_bump": "minor",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "minor", "version": "v1.3.0" }
+    },
+    {
+      "id": "decision/degrade/t3-high-minor-no-differ",
+      "kind": "decision",
+      "description": "The T3 x high differ requirement is qualified to PATCH claims: a MINOR claim goes clean without a differ.",
+      "spec": "§6.4",
+      "inputs": {
+        "effective_trust": "T3",
+        "blast": "high",
+        "strategy": "demote",
+        "differ_available": false,
+        "semantic_floor": "minor",
+        "claimed_bump": "minor",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "minor", "version": "v1.3.0" }
+    },
+    {
+      "id": "decision/floor/breaking-overrides-claim",
+      "kind": "decision",
+      "description": "No trust level overrides the semantic floor: the differ detects a breaking change, so a PATCH claim by T3 code still releases as MAJOR.",
+      "spec": "§6.1",
+      "inputs": {
+        "effective_trust": "T3",
+        "blast": "low",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "major",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "major", "version": "v2.0.0" }
+    },
+    {
+      "id": "decision/floor/claim-above-floor",
+      "kind": "decision",
+      "description": "The semantic floor is a minimum, not a target: a MINOR claim over a PATCH floor releases as MINOR.",
+      "spec": "§6.1",
+      "inputs": {
+        "effective_trust": "T3",
+        "blast": "low",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "minor",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "minor", "version": "v1.3.0" }
+    },
+    {
+      "id": "decision/floor/breaking-at-low-trust",
+      "kind": "decision",
+      "description": "The semantic floor is honored unconditionally, including in the pre-release channel: a breaking change at T0 demotes as a MAJOR pre-release, never as a smaller bump.",
+      "spec": "§6.1",
+      "inputs": {
+        "effective_trust": "T0",
+        "blast": "low",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "major",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "major", "version": "v2.0.0-t0.1" }
+    },
+    {
+      "id": "decision/iteration/re-cut",
+      "kind": "decision",
+      "description": "A re-cut at the same core version and level increments the iteration (§7.2): the second T1 cut of the same patch release is -t1.2.",
+      "spec": "§7.2",
+      "inputs": {
+        "effective_trust": "T1",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 2
+      },
+      "expected": { "channel": "prerelease", "bump": "patch", "version": "v1.2.4-t1.2" }
+    },
+    {
+      "id": "decision/inflate/t0-low-escalates",
+      "kind": "decision",
+      "description": "Under 'inflate', a cell that would demote instead escalates the bump so default-range consumers do not auto-adopt; the escalation target (MINOR vs MAJOR) is a policy choice per §6.3, so no exact version is asserted.",
+      "spec": "§6.3",
+      "inputs": {
+        "effective_trust": "T0",
+        "blast": "low",
+        "strategy": "inflate",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "escalate": true, "bump": null, "version": null }
+    },
+    {
+      "id": "decision/inflate/t2-high-escalates",
+      "kind": "decision",
+      "description": "T2 x high under 'inflate': the pre-release cell escalates instead of demoting.",
+      "spec": "§6.3",
+      "inputs": {
+        "effective_trust": "T2",
+        "blast": "high",
+        "strategy": "inflate",
+        "differ_available": true,
+        "semantic_floor": "patch",
+        "claimed_bump": "patch",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "escalate": true, "bump": null, "version": null }
+    },
+    {
+      "id": "decision/inflate/clean-cell-agrees",
+      "kind": "decision",
+      "description": "When the evidence supports the claim, 'inflate' and 'demote' agree: the release is clean at the claimed bump with no escalation.",
+      "spec": "§6.3",
+      "inputs": {
+        "effective_trust": "T3",
+        "blast": "moderate",
+        "strategy": "inflate",
+        "differ_available": true,
+        "semantic_floor": "minor",
+        "claimed_bump": "minor",
+        "current_version": "v1.2.3",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "escalate": false, "bump": "minor", "version": "v1.3.0" }
+    },
+    {
+      "id": "decision/appendix-a/step-1",
+      "kind": "decision",
+      "description": "Appendix A step 1: pkg/common at effective T0 (three unreviewed CI-agent commits), MINOR floor from apidiff (additive only), strategy demote — the release cuts into the pre-release channel as common/v0.9.0-t0.1. (Appendix A does not state a blast score; T0 demotes at every blast, so 'moderate' here is editorial.)",
+      "spec": "Appendix A",
+      "inputs": {
+        "effective_trust": "T0",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "minor",
+        "claimed_bump": "minor",
+        "current_version": "common/v0.8.4",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "minor", "version": "common/v0.9.0-t0.1" }
+    },
+    {
+      "id": "decision/appendix-a/step-2",
+      "kind": "decision",
+      "description": "Appendix A step 2: auth's own T3 is floored to effective T0 through its dependency on common (see propagation/appendix-a-pre-promotion); the decision confines auth/v1.4.0 to the pre-release channel as auth/v1.4.0-t0.1.",
+      "spec": "Appendix A",
+      "inputs": {
+        "effective_trust": "T0",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "minor",
+        "claimed_bump": "minor",
+        "current_version": "auth/v1.3.2",
+        "iteration": 1
+      },
+      "expected": { "channel": "prerelease", "bump": "minor", "version": "auth/v1.4.0-t0.1" }
+    },
+    {
+      "id": "decision/appendix-a/step-3",
+      "kind": "decision",
+      "description": "Appendix A step 3: a post-hoc review attestation lifts own(common) to T2, meeting the threshold — the promotion re-evaluation cuts the clean tag common/v0.9.0 on the identical SHA. (Blast 'moderate' is editorial: the T2 row goes clean at low or moderate with the MINOR claim; 'high' would keep it demoted.)",
+      "spec": "Appendix A",
+      "inputs": {
+        "effective_trust": "T2",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "minor",
+        "claimed_bump": "minor",
+        "current_version": "common/v0.8.4",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "minor", "version": "common/v0.9.0" }
+    },
+    {
+      "id": "decision/appendix-a/step-4",
+      "kind": "decision",
+      "description": "Appendix A step 4: the cascade re-evaluation gives effective(auth) = min(own T3, common T2) = T2 (see propagation/appendix-a-post-promotion), which meets the threshold — auth/v1.4.0 goes clean on the same SHA. Only evidence changed; no source was rebuilt.",
+      "spec": "Appendix A",
+      "inputs": {
+        "effective_trust": "T2",
+        "blast": "moderate",
+        "strategy": "demote",
+        "differ_available": true,
+        "semantic_floor": "minor",
+        "claimed_bump": "minor",
+        "current_version": "auth/v1.3.2",
+        "iteration": 1
+      },
+      "expected": { "channel": "clean", "bump": "minor", "version": "auth/v1.4.0" }
+    }
+  ]
+}
