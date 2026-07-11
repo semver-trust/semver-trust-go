@@ -46,9 +46,9 @@ tasks:
       - markdownlint .
 
   lint:yaml:
-    desc: Lint YAML files
+    desc: Lint YAML files (tracked files only — yamlfmt's tree walk breaks on linked-worktree .git files)
     cmds:
-      - yamlfmt -lint .
+      - git ls-files -z '*.yml' '*.yaml' | xargs -0 yamlfmt -lint
 
   lint:python:
     desc: Lint and format-check Python scripts
@@ -99,7 +99,7 @@ tasks:
   fmt:yaml:
     desc: Format YAML files
     cmds:
-      - yamlfmt .
+      - git ls-files -z '*.yml' '*.yaml' | xargs -0 yamlfmt
 
   test:
     desc: Run tests
