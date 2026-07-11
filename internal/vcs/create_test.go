@@ -3,6 +3,7 @@
 package vcs
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -78,5 +79,61 @@ func TestCreateTag(t *testing.T) {
 	// Deterministic timestamp: exactly the injected clock, never time.Now.
 	if !obj.Tagger.When.Equal(when) {
 		t.Errorf("tagger time = %s, want injected %s", obj.Tagger.When, when)
+	}
+}
+
+// CreateTagAtHead resolves HEAD itself; the tag must land on the same commit
+// an explicit Head lookup names, with the injected clock intact.
+func TestCreateTagAtHead(t *testing.T) {
+	noTags, _ := buildFixtures(t)
+	when := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+
+	if err := CreateTagAtHead(noTags, "v0.0.1", "Release Bot", "bot@semver-trust.test", "release v0.0.1", when); err != nil {
+		t.Fatalf("CreateTagAtHead: %v", err)
+	}
+
+	r, err := git.PlainOpen(noTags)
+	if err != nil {
+		t.Fatalf("PlainOpen: %v", err)
+	}
+	head, err := r.Head()
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	ref, err := r.Tag("v0.0.1")
+	if err != nil {
+		t.Fatalf("Tag: %v", err)
+	}
+	obj, err := r.TagObject(ref.Hash())
+	if err != nil {
+		t.Fatalf("TagObject: %v", err)
+	}
+	if obj.Target != head.Hash() {
+		t.Errorf("tag target = %s, want HEAD %s", obj.Target, head.Hash())
+	}
+	if !obj.Tagger.When.Equal(when) {
+		t.Errorf("tagger time = %s, want injected %s", obj.Tagger.When, when)
+	}
+}
+
+// Tagger resolves user.name/user.email with git's own scoping; a local config
+// value wins over any ambient global one, making the assertion hermetic.
+func TestTagger(t *testing.T) {
+	noTags, _ := buildFixtures(t)
+	for k, v := range map[string]string{
+		"user.name":  "Fixture Tagger",
+		"user.email": "tagger@semver-trust.test",
+	} {
+		if out, err := exec.Command("git", "-C", noTags, "config", k, v).CombinedOutput(); err != nil {
+			t.Fatalf("git config %s: %v\n%s", k, err, out)
+		}
+	}
+
+	name, email, err := Tagger(noTags)
+	if err != nil {
+		t.Fatalf("Tagger: %v", err)
+	}
+	if name != "Fixture Tagger" || email != "tagger@semver-trust.test" {
+		t.Errorf("Tagger = %q <%s>, want the local config identity", name, email)
 	}
 }

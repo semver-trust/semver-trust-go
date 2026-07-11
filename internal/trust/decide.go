@@ -111,26 +111,54 @@ type Decision struct {
 	Escalate bool
 }
 
-// cell is a §6.4 decision-table entry: the clean channel is available
+// Cell is a §6.4 decision-table entry: the clean channel is available
 // unconditionally, conditioned on a differ proof for PATCH claims,
 // conditioned on a differ proof for any claim (the T1/low cell), or
 // unavailable.
-type cell uint8
+type Cell uint8
 
 const (
-	cellClean cell = iota
-	cellDifferPatch
-	cellDifferAny
-	cellPrerelease
+	CellClean Cell = iota
+	CellDifferPatch
+	CellDifferAny
+	CellPrerelease
 )
+
+// String returns a short human-readable form of the cell, the vocabulary
+// `policy explain` renders.
+func (c Cell) String() string {
+	switch c {
+	case CellClean:
+		return "clean"
+	case CellDifferPatch:
+		return "differ proof (patch)"
+	case CellDifferAny:
+		return "differ proof (any)"
+	case CellPrerelease:
+		return "pre-release"
+	default:
+		return "unknown"
+	}
+}
 
 // decisionTable is the §6.4 default decision table (illustrative policy;
 // rows T0-T3, columns low/moderate/high).
-var decisionTable = [4][3]cell{
-	T0: {cellPrerelease, cellPrerelease, cellPrerelease},
-	T1: {cellDifferAny, cellPrerelease, cellPrerelease},
-	T2: {cellClean, cellDifferPatch, cellPrerelease},
-	T3: {cellClean, cellClean, cellDifferPatch},
+var decisionTable = [4][3]Cell{
+	T0: {CellPrerelease, CellPrerelease, CellPrerelease},
+	T1: {CellDifferAny, CellPrerelease, CellPrerelease},
+	T2: {CellClean, CellDifferPatch, CellPrerelease},
+	T3: {CellClean, CellClean, CellDifferPatch},
+}
+
+// DecisionCell is the read-only view of the §6.4 default decision table that
+// Decide runs: the cell for effective trust l at blast score b. It exists so
+// a renderer (`policy explain`) can show the table in effect without
+// duplicating it.
+func DecisionCell(l Level, b Blast) (Cell, error) {
+	if l > T3 || b > BlastHigh {
+		return 0, fmt.Errorf("decision cell: invalid inputs (level %d, blast %d)", l, b)
+	}
+	return decisionTable[l][b], nil
 }
 
 // Decide runs the §6.4 default decision table with the §6.3 strategy and
@@ -156,8 +184,8 @@ func Decide(in DecideInputs) (Decision, error) {
 	}
 
 	c := decisionTable[in.Effective][in.Blast]
-	differNeeded := c == cellDifferAny || (c == cellDifferPatch && bump == evidence.BumpPatch)
-	demoted := c == cellPrerelease || (differNeeded && !in.DifferAvailable)
+	differNeeded := c == CellDifferAny || (c == CellDifferPatch && bump == evidence.BumpPatch)
+	demoted := c == CellPrerelease || (differNeeded && !in.DifferAvailable)
 
 	if in.Strategy == StrategyInflate {
 		if demoted {
