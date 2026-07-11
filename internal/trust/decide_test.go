@@ -217,3 +217,34 @@ func TestDecideRejects(t *testing.T) {
 		}
 	})
 }
+
+// DecisionCell exposes exactly the table Decide runs: the §6.4 default,
+// spot-checked at its corners and characteristic cells.
+func TestDecisionCell(t *testing.T) {
+	tests := []struct {
+		level Level
+		blast Blast
+		want  Cell
+	}{
+		{T0, BlastLow, CellPrerelease},
+		{T1, BlastLow, CellDifferAny},
+		{T1, BlastModerate, CellPrerelease},
+		{T2, BlastLow, CellClean},
+		{T2, BlastModerate, CellDifferPatch},
+		{T2, BlastHigh, CellPrerelease},
+		{T3, BlastModerate, CellClean},
+		{T3, BlastHigh, CellDifferPatch},
+	}
+	for _, tc := range tests {
+		got, err := DecisionCell(tc.level, tc.blast)
+		if err != nil {
+			t.Fatalf("DecisionCell(%s, %s): %v", tc.level, tc.blast, err)
+		}
+		if got != tc.want {
+			t.Errorf("DecisionCell(%s, %s) = %s, want %s", tc.level, tc.blast, got, tc.want)
+		}
+	}
+	if _, err := DecisionCell(Level(4), BlastLow); err == nil {
+		t.Error("DecisionCell accepted an out-of-range level")
+	}
+}
