@@ -18,6 +18,6 @@ Explore the go-semver project
 4. cd back into this project `~/code/semver-trust/semver-trust-go/`
 8. Summarize your understanding:
     - **Purpose**:
-    - **Architecture**: 
+    - **Architecture**:
     - **Key files**:
     - **How the semver-trust specification relates to this project**
