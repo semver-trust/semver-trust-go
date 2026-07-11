@@ -144,33 +144,48 @@ func BuildReviewStatement(in ReviewInput) ([]byte, error) {
 	})
 }
 
-// ReviewEmitter signs review statements into DSSE envelopes per ADR-022. It
-// holds the signing key, the compiled review schema (the refuse-to-sign
-// gate), and a self-verifier with exactly the signing key enrolled for the
-// attestation namespace (the refuse-to-output gate).
-type ReviewEmitter struct {
+// emitter is the shared emission core both predicate emitters wrap: the
+// signing key, the compiled predicate schema (the refuse-to-sign gate), and
+// a self-verifier with exactly the signing key enrolled for the attestation
+// namespace (the refuse-to-output gate).
+type emitter struct {
 	signer       ssh.Signer
 	schema       *jsonschema.Schema
 	selfVerifier *Verifier
 }
 
-// NewReviewEmitter builds an emitter from a signer and the raw review-v0.1
-// JSON Schema bytes (injected, like every other piece of trust material —
-// the CLI wires the vendored conformance copy).
-func NewReviewEmitter(signer ssh.Signer, reviewSchema []byte) (*ReviewEmitter, error) {
-	schema, err := compileSchema(reviewSchema)
+// newEmitter builds the shared core for one predicate type from a signer and
+// the raw JSON Schema bytes (injected, like every other piece of trust
+// material — the CLI wires the vendored conformance copies).
+func newEmitter(signer ssh.Signer, predicateType string, schemaBytes []byte) (*emitter, error) {
+	schema, err := compileSchema(schemaBytes)
 	if err != nil {
-		return nil, fmt.Errorf("attest: review schema: %w", err)
+		return nil, fmt.Errorf("attest: schema for %s: %w", predicateType, err)
 	}
 	selfVerifier, err := NewVerifier([]sshsigpkg.AllowedSigner{{
 		Principals: []string{ssh.FingerprintSHA256(signer.PublicKey())},
 		Namespaces: []string{Namespace},
 		Key:        signer.PublicKey(),
-	}}, map[string][]byte{PredicateReview: reviewSchema})
+	}}, map[string][]byte{predicateType: schemaBytes})
 	if err != nil {
 		return nil, err
 	}
-	return &ReviewEmitter{signer: signer, schema: schema, selfVerifier: selfVerifier}, nil
+	return &emitter{signer: signer, schema: schema, selfVerifier: selfVerifier}, nil
+}
+
+// ReviewEmitter signs review statements into DSSE envelopes per ADR-022.
+type ReviewEmitter struct {
+	core *emitter
+}
+
+// NewReviewEmitter builds an emitter from a signer and the raw review-v0.1
+// JSON Schema bytes.
+func NewReviewEmitter(signer ssh.Signer, reviewSchema []byte) (*ReviewEmitter, error) {
+	core, err := newEmitter(signer, PredicateReview, reviewSchema)
+	if err != nil {
+		return nil, err
+	}
+	return &ReviewEmitter{core: core}, nil
 }
 
 // Emission is a signed review attestation: the DSSE envelope bytes, the
@@ -198,7 +213,16 @@ func (e *ReviewEmitter) Emit(in ReviewInput) (Emission, error) {
 	if err != nil {
 		return Emission{}, err
 	}
+	return e.core.emit(payload, in.Timestamp)
+}
 
+// emit runs steps 2-4 above — the emission riders shared by every predicate
+// emitter: schema-validate before signing (a schema-invalid attestation can
+// only ever exist as a hand-built test double, never as this core's output),
+// sign the DSSE PAE in the attestation namespace, and refuse to output an
+// envelope the real Verifier rejects. Self-verification runs at the injected
+// statement instant, the only one available without a wall clock (ADR-018).
+func (e *emitter) emit(payload []byte, at time.Time) (Emission, error) {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(payload))
 	if err != nil {
 		return Emission{}, fmt.Errorf("attest: refusing to sign: %w: %v", ErrSchemaInvalid, err)
@@ -224,7 +248,7 @@ func (e *ReviewEmitter) Emit(in ReviewInput) (Emission, error) {
 		return Emission{}, fmt.Errorf("attest: %w", err)
 	}
 
-	if _, err := e.selfVerifier.Verify(envelope, in.Timestamp); err != nil {
+	if _, err := e.selfVerifier.Verify(envelope, at); err != nil {
 		return Emission{}, fmt.Errorf("attest: emitted envelope failed self-verification, refusing to output it: %w", err)
 	}
 	return Emission{Envelope: envelope, Payload: payload, KeyID: keyid}, nil

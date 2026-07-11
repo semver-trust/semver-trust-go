@@ -38,6 +38,16 @@ type GitRefStore struct {
 
 const refPrefix = "refs/attestations/"
 
+// EnvelopeRef returns the ref name GitRefStore files an envelope under for a
+// subject: refs/attestations/<subject>/<content-digest>. It is deterministic
+// from the bytes, so a consumer that verified an envelope can name the exact
+// stored attestation it consumed (the §8.1 review-attestation reference)
+// without another storage round-trip.
+func EnvelopeRef(subject string, envelope []byte) string {
+	sum := sha256.Sum256(envelope)
+	return refPrefix + subject + "/" + hex.EncodeToString(sum[:12])
+}
+
 // Put writes the envelope blob and a ref naming it. The ref leaf is the
 // envelope's content digest, so distinct attestations for one subject
 // coexist and re-putting identical bytes is a no-op.
@@ -67,8 +77,7 @@ func (s GitRefStore) Put(subject string, envelope []byte) (string, error) {
 		return "", err
 	}
 
-	sum := sha256.Sum256(envelope)
-	ref := refPrefix + subject + "/" + hex.EncodeToString(sum[:12])
+	ref := EnvelopeRef(subject, envelope)
 	if err := r.Storer.SetReference(plumbing.NewHashReference(plumbing.ReferenceName(ref), blob)); err != nil {
 		return "", err
 	}
