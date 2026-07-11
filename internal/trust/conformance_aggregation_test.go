@@ -10,10 +10,11 @@ import (
 	"testing"
 )
 
-// Consumes the aggregation and propagation conformance vectors when
-// reachable, per the GO-020 precedent (the durable vendored harness is
-// GO-026): SEMVER_TRUST_AGGREGATION_VECTORS / SEMVER_TRUST_PROPAGATION_VECTORS,
-// or testdata/aggregation.json / testdata/propagation.json; absent, skip.
+// Consumes the aggregation and propagation conformance vectors from the
+// ADR-021 vendored copy (conformance/vendor/, digest-pinned by
+// conformance/manifest.json — GO-026). SEMVER_TRUST_AGGREGATION_VECTORS /
+// SEMVER_TRUST_PROPAGATION_VECTORS or testdata/ drop-ins override the
+// vendored copy for testing against unreleased vectors.
 
 type aggVectorFile struct {
 	SpecVersion string      `json:"spec_version"`
@@ -45,13 +46,18 @@ func loadAggVectors(t *testing.T, env, name string) aggVectorFile {
 
 	path := os.Getenv(env)
 	if path == "" {
-		candidate := filepath.Join("testdata", name)
-		if _, err := os.Stat(candidate); err == nil {
-			path = candidate
+		for _, candidate := range []string{
+			filepath.Join("testdata", name),
+			filepath.Join("..", "..", "conformance", "vendor", name),
+		} {
+			if _, err := os.Stat(candidate); err == nil {
+				path = candidate
+				break
+			}
 		}
 	}
 	if path == "" {
-		t.Skipf("conformance vectors absent; set %s or vendor testdata/%s (GO-026)", env, name)
+		t.Fatalf("conformance vectors absent: conformance/vendor/%s missing (refresh via scripts/sync-conformance.py)", name)
 	}
 
 	data, err := os.ReadFile(path)

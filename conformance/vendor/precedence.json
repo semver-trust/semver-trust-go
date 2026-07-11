@@ -1,0 +1,296 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.2",
+  "description": "SemVer 2.0.0 precedence and §7.1 tag-grammar vectors for SemVer-Trust (spec/semver-trust.md §7.1, §7.2). 'precedence' vectors are strictly ascending ordered lists (a harness parses each entry, sorts, and compares to the given order). 'grammar' vectors map a tag string to a parse outcome and, for parseable tags, its components.",
+  "vectors": [
+    {
+      "id": "precedence/semver-canonical",
+      "kind": "precedence",
+      "description": "The canonical SemVer 2.0.0 §11 precedence example; anchors the comparator against the authoritative source.",
+      "spec": "§7.2",
+      "ordered": [
+        "1.0.0-alpha",
+        "1.0.0-alpha.1",
+        "1.0.0-alpha.beta",
+        "1.0.0-beta",
+        "1.0.0-beta.2",
+        "1.0.0-beta.11",
+        "1.0.0-rc.1",
+        "1.0.0"
+      ],
+      "note": "Numeric identifiers compare numerically (beta.2 < beta.11); a smaller set of pre-release fields ranks lower when prefixes are equal (alpha < alpha.1); pre-release ranks below the release (rc.1 < 1.0.0)."
+    },
+    {
+      "id": "precedence/rc-vs-trust",
+      "kind": "precedence",
+      "description": "A trust-gated release outranks an rc among pre-releases, and both rank below the clean release.",
+      "spec": "§7.2",
+      "ordered": ["1.4.0-rc.1", "1.4.0-t1.1", "1.4.0"],
+      "note": "\"rc\" < \"t1\" because ASCII 'r' (114) < 't' (116); the clean 1.4.0 outranks every pre-release."
+    },
+    {
+      "id": "precedence/iteration-numeric",
+      "kind": "precedence",
+      "description": "Iterations are SemVer numeric identifiers and compare numerically, not lexically.",
+      "spec": "§7.1",
+      "ordered": ["1.0.0-t2.1", "1.0.0-t2.2", "1.0.0-t2.10"],
+      "note": "2 < 10 numerically; a lexical comparison would wrongly order 10 < 2."
+    },
+    {
+      "id": "precedence/cross-level",
+      "kind": "precedence",
+      "description": "Across trust levels at the same core, the trust identifier decides before the iteration is consulted.",
+      "spec": "§7.2",
+      "ordered": ["1.0.0-t0.5", "1.0.0-t2.1"],
+      "note": "First identifier \"t0\" < \"t2\" (ASCII '0' < '2'); the iterations .5 and .1 are never compared."
+    },
+    {
+      "id": "precedence/level-digit-hazard",
+      "kind": "precedence",
+      "description": "Raw-SemVer hazard: lexical comparison of alphanumeric identifiers orders \"t10\" below \"t2\".",
+      "spec": "§7.1",
+      "ordered": ["1.0.0-t10.1", "1.0.0-t2.1"],
+      "note": "This is a true SemVer ordering and it exercises the implementation's comparator, NOT grammar acceptance: the §7.1 grammar caps levels at a single digit precisely to foreclose this hazard, so 't10' is never a valid trust identifier (see grammar/invalid/two-digit-level)."
+    },
+    {
+      "id": "precedence/numeric-below-alphanumeric",
+      "kind": "precedence",
+      "description": "SemVer §11: a numeric pre-release identifier has lower precedence than an alphanumeric one.",
+      "spec": "§7.2",
+      "ordered": ["1.0.0-1", "1.0.0-rc"],
+      "note": "\"1\" is numeric, \"rc\" is alphanumeric; numeric always sorts below alphanumeric."
+    },
+    {
+      "id": "precedence/core-basics",
+      "kind": "precedence",
+      "description": "Core MAJOR.MINOR.PATCH compares numerically, field by field.",
+      "spec": "§7.1",
+      "ordered": ["1.0.0", "1.0.1", "1.1.0", "2.0.0"],
+      "note": "PATCH, then MINOR, then MAJOR differences each raise precedence."
+    },
+    {
+      "id": "precedence/trust-ladder",
+      "kind": "precedence",
+      "description": "The full trust ladder at one core version; every trust-gated release sorts below the clean release.",
+      "spec": "§7.1",
+      "ordered": ["1.0.0-t0.1", "1.0.0-t1.1", "1.0.0-t2.1", "1.0.0-t3.1", "1.0.0"],
+      "note": "\"t0\" < \"t1\" < \"t2\" < \"t3\" lexically, and all rank below the clean release: low-trust releases are opt-in by construction (§7.1)."
+    },
+    {
+      "id": "precedence/core-dominates-trust",
+      "kind": "precedence",
+      "description": "Core precedence dominates the trust suffix.",
+      "spec": "§7.1",
+      "ordered": ["1.0.0-t3.1", "1.0.1-t0.1"],
+      "note": "A T0 pre-release of a higher core (1.0.1) outranks a T3 pre-release of a lower core (1.0.0); the trust level never reorders across core versions."
+    },
+    {
+      "id": "grammar/valid/trust-suffix-no-path",
+      "kind": "grammar",
+      "description": "A trust-version with no component path.",
+      "spec": "§7.1",
+      "tag": "v1.4.0-t1.1",
+      "expected": {
+        "outcome": "trust_version",
+        "component_path": null,
+        "core": "1.4.0",
+        "level": 1,
+        "iteration": 1,
+        "prerelease": null,
+        "reason": null
+      }
+    },
+    {
+      "id": "grammar/valid/trust-suffix-with-path",
+      "kind": "grammar",
+      "description": "A trust-version with a single-segment component path.",
+      "spec": "§7.1",
+      "tag": "auth/v2.0.0-t0.3",
+      "expected": {
+        "outcome": "trust_version",
+        "component_path": "auth",
+        "core": "2.0.0",
+        "level": 0,
+        "iteration": 3,
+        "prerelease": null,
+        "reason": null
+      }
+    },
+    {
+      "id": "grammar/valid/clean-nested-path",
+      "kind": "grammar",
+      "description": "A clean (no trust suffix) trust-version with a nested component path.",
+      "spec": "§7.1",
+      "tag": "pkg/common/v0.9.0",
+      "expected": {
+        "outcome": "trust_version",
+        "component_path": "pkg/common",
+        "core": "0.9.0",
+        "level": null,
+        "iteration": null,
+        "prerelease": null,
+        "reason": null
+      }
+    },
+    {
+      "id": "grammar/valid/clean-no-path",
+      "kind": "grammar",
+      "description": "A clean trust-version with no component path (clean channel).",
+      "spec": "§7.1",
+      "tag": "v1.0.0",
+      "expected": {
+        "outcome": "trust_version",
+        "component_path": null,
+        "core": "1.0.0",
+        "level": null,
+        "iteration": null,
+        "prerelease": null,
+        "reason": null
+      }
+    },
+    {
+      "id": "grammar/valid/level-min-boundary",
+      "kind": "grammar",
+      "description": "Level 0 is a valid trust level.",
+      "spec": "§7.1",
+      "tag": "v1.0.0-t0.1",
+      "expected": {
+        "outcome": "trust_version",
+        "component_path": null,
+        "core": "1.0.0",
+        "level": 0,
+        "iteration": 1,
+        "prerelease": null,
+        "reason": null
+      }
+    },
+    {
+      "id": "grammar/valid/level-max-boundary",
+      "kind": "grammar",
+      "description": "Level 3 is a valid trust level.",
+      "spec": "§7.1",
+      "tag": "v1.0.0-t3.1",
+      "expected": {
+        "outcome": "trust_version",
+        "component_path": null,
+        "core": "1.0.0",
+        "level": 3,
+        "iteration": 1,
+        "prerelease": null,
+        "reason": null
+      }
+    },
+    {
+      "id": "grammar/valid/multi-digit-iteration",
+      "kind": "grammar",
+      "description": "Iterations are SemVer numeric identifiers and may have multiple digits.",
+      "spec": "§7.1",
+      "tag": "v1.0.0-t2.10",
+      "expected": {
+        "outcome": "trust_version",
+        "component_path": null,
+        "core": "1.0.0",
+        "level": 2,
+        "iteration": 10,
+        "prerelease": null,
+        "reason": null
+      }
+    },
+    {
+      "id": "grammar/invalid/two-digit-level",
+      "kind": "grammar",
+      "description": "A two-digit level is not a valid trust identifier.",
+      "spec": "§7.1",
+      "tag": "v1.4.0-t10.1",
+      "expected": {
+        "outcome": "invalid",
+        "component_path": null,
+        "core": null,
+        "level": null,
+        "iteration": null,
+        "prerelease": null,
+        "reason": "level must be a single digit 0-3; \"t10\" has two digits (§7.1)"
+      }
+    },
+    {
+      "id": "grammar/invalid/missing-iteration",
+      "kind": "grammar",
+      "description": "A trust identifier without an iteration is incomplete.",
+      "spec": "§7.1",
+      "tag": "v1.4.0-t1",
+      "expected": {
+        "outcome": "invalid",
+        "component_path": null,
+        "core": null,
+        "level": null,
+        "iteration": null,
+        "prerelease": null,
+        "reason": "trust-suffix requires \".<iteration>\"; iteration is absent (§7.1)"
+      }
+    },
+    {
+      "id": "grammar/invalid/iteration-zero",
+      "kind": "grammar",
+      "description": "Iterations start at 1; zero is not allowed.",
+      "spec": "§7.1",
+      "tag": "v1.4.0-t1.0",
+      "expected": {
+        "outcome": "invalid",
+        "component_path": null,
+        "core": null,
+        "level": null,
+        "iteration": null,
+        "prerelease": null,
+        "reason": "iteration starts at 1; \"0\" is not allowed (§7.1)"
+      }
+    },
+    {
+      "id": "grammar/invalid/level-out-of-range",
+      "kind": "grammar",
+      "description": "Only levels 0-3 are defined.",
+      "spec": "§7.1",
+      "tag": "v1.4.0-t4.1",
+      "expected": {
+        "outcome": "invalid",
+        "component_path": null,
+        "core": null,
+        "level": null,
+        "iteration": null,
+        "prerelease": null,
+        "reason": "level out of range; only 0-3 are defined (§7.1)"
+      }
+    },
+    {
+      "id": "grammar/invalid/not-a-core-version",
+      "kind": "grammar",
+      "description": "The core-version must be MAJOR.MINOR.PATCH; a two-field version is not a valid tag.",
+      "spec": "§7.1",
+      "tag": "v1.4",
+      "expected": {
+        "outcome": "invalid",
+        "component_path": null,
+        "core": null,
+        "level": null,
+        "iteration": null,
+        "prerelease": null,
+        "reason": "core-version must be MAJOR.MINOR.PATCH; \"1.4\" is not (§7.1)"
+      }
+    },
+    {
+      "id": "grammar/plain/rc-prerelease",
+      "kind": "grammar",
+      "description": "A valid SemVer version whose pre-release is not trust-shaped parses as a plain pre-release version with the trust suffix absent (not a trust-version, not rejected).",
+      "spec": "§7.1",
+      "tag": "v1.4.0-rc.1",
+      "expected": {
+        "outcome": "plain_version",
+        "component_path": null,
+        "core": "1.4.0",
+        "level": null,
+        "iteration": null,
+        "prerelease": "rc.1",
+        "reason": null
+      }
+    }
+  ]
+}

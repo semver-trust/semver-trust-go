@@ -1,0 +1,297 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.2",
+  "description": "Aggregation vectors for SemVer-Trust (spec/semver-trust.md §5.1, §5.2, §5.4, with §4.4 derivation re-leveling as it feeds §5.2). 'scope_partition' vectors map commit diff paths through a policy scope-glob map and assert which commits touch which scopes; 'scope_floor' vectors additionally carry per-commit levels and assert the per-scope own-trust floor; 'meta_path' vectors assert the §5.4 hard-fail rule for under-leveled commits touching meta-paths. Globs use gitignore-style segments: '*' matches within a path segment, '**' matches across segments.",
+  "vectors": [
+    {
+      "id": "aggregation/partition/single-scope",
+      "kind": "scope_partition",
+      "description": "A commit whose diff paths all fall under one scope glob touches exactly that scope.",
+      "spec": "§5.1",
+      "inputs": {
+        "scopes": {
+          "services/auth/**": "auth",
+          "services/billing/**": "billing",
+          "pkg/**": "common",
+          "docs/**": "docs"
+        },
+        "commits": [
+          { "id": "c1", "paths": ["pkg/common/util.go", "pkg/common/util_test.go"] }
+        ]
+      },
+      "expected": {
+        "scopes": { "common": ["c1"] }
+      }
+    },
+    {
+      "id": "aggregation/partition/multi-scope-commit",
+      "kind": "scope_partition",
+      "description": "The spec's own example: a commit touching services/auth/** and docs/** contributes to both scopes.",
+      "spec": "§5.1",
+      "inputs": {
+        "scopes": {
+          "services/auth/**": "auth",
+          "services/billing/**": "billing",
+          "pkg/**": "common",
+          "docs/**": "docs"
+        },
+        "commits": [
+          { "id": "c1", "paths": ["services/auth/handler.go", "docs/auth.md"] }
+        ]
+      },
+      "expected": {
+        "scopes": { "auth": ["c1"], "docs": ["c1"] }
+      }
+    },
+    {
+      "id": "aggregation/partition/default-scope",
+      "kind": "scope_partition",
+      "description": "Paths matching no scope glob fall into the implicit 'default' scope.",
+      "spec": "§5.1",
+      "inputs": {
+        "scopes": {
+          "services/auth/**": "auth",
+          "pkg/**": "common"
+        },
+        "commits": [
+          { "id": "c1", "paths": ["README.md"] },
+          { "id": "c2", "paths": ["tools/release.sh", "pkg/common/util.go"] }
+        ]
+      },
+      "expected": {
+        "scopes": { "common": ["c2"], "default": ["c1", "c2"] }
+      }
+    },
+    {
+      "id": "aggregation/partition/glob-segment-boundary",
+      "kind": "scope_partition",
+      "description": "Glob matching is segment-aware: services/auth/** does not match services/authz/…, which falls to the default scope.",
+      "spec": "§5.1",
+      "inputs": {
+        "scopes": {
+          "services/auth/**": "auth"
+        },
+        "commits": [
+          { "id": "c1", "paths": ["services/authz/policy.go"] },
+          { "id": "c2", "paths": ["services/auth/policy.go"] }
+        ]
+      },
+      "expected": {
+        "scopes": { "auth": ["c2"], "default": ["c1"] }
+      }
+    },
+    {
+      "id": "aggregation/floor/min-over-commits",
+      "kind": "scope_floor",
+      "description": "Own trust is the minimum level over the commits touching the scope: floors, never averages.",
+      "spec": "§5.2",
+      "inputs": {
+        "scopes": { "pkg/**": "common" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["pkg/common/api.go"] },
+          { "id": "c2", "level": "T1", "paths": ["pkg/common/impl.go"] },
+          { "id": "c3", "level": "T3", "paths": ["pkg/common/impl_test.go"] }
+        ]
+      },
+      "expected": {
+        "own_trust": { "common": "T1" }
+      }
+    },
+    {
+      "id": "aggregation/floor/no-de-minimis",
+      "kind": "scope_floor",
+      "description": "No de-minimis exception: a one-line T0 commit floors its scope exactly like a thousand-line one — 'trivial commits don't count' is the hiding place for a payload.",
+      "spec": "§5.1",
+      "inputs": {
+        "scopes": { "services/auth/**": "auth" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/handler.go"] },
+          { "id": "c2", "level": "T3", "paths": ["services/auth/session.go"] },
+          { "id": "c3", "level": "T0", "paths": ["services/auth/config.go"] }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T0" }
+      }
+    },
+    {
+      "id": "aggregation/floor/multi-scope-contribution",
+      "kind": "scope_floor",
+      "description": "A commit touching two scopes contributes its level to both floors.",
+      "spec": "§5.1",
+      "inputs": {
+        "scopes": {
+          "services/auth/**": "auth",
+          "docs/**": "docs"
+        },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/handler.go"] },
+          { "id": "c2", "level": "T1", "paths": ["services/auth/README.md", "docs/auth.md"] },
+          { "id": "c3", "level": "T2", "paths": ["docs/index.md"] }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T1", "docs": "T1" }
+      }
+    },
+    {
+      "id": "aggregation/floor/appendix-a-step-1",
+      "kind": "scope_floor",
+      "description": "Appendix A step 1: three commits from a CI agent (machine identity, Provenance: agent, no review) on pkg/common give own(common) = T0.",
+      "spec": "Appendix A",
+      "inputs": {
+        "scopes": {
+          "services/auth/**": "auth",
+          "services/billing/**": "billing",
+          "pkg/**": "common"
+        },
+        "commits": [
+          { "id": "c1", "level": "T0", "paths": ["pkg/common/retry.go"] },
+          { "id": "c2", "level": "T0", "paths": ["pkg/common/retry_test.go"] },
+          { "id": "c3", "level": "T0", "paths": ["pkg/common/backoff.go"] }
+        ]
+      },
+      "expected": {
+        "own_trust": { "common": "T0" }
+      }
+    },
+    {
+      "id": "aggregation/floor/appendix-a-step-2-derivation",
+      "kind": "scope_floor",
+      "description": "Appendix A step 2: five human-authored, human-reviewed commits plus regenerated internal/gen/** whose verified derivation proof inherits the reviewed spec commits' T3 — own(auth) = T3. The inherited level is the §4.4 inputs' floor, computed upstream of aggregation and carried here as data.",
+      "spec": "Appendix A",
+      "inputs": {
+        "scopes": { "services/auth/**": "auth" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/api/openapi.yaml"] },
+          { "id": "c2", "level": "T3", "paths": ["services/auth/handler.go"] },
+          { "id": "c3", "level": "T3", "paths": ["services/auth/session.go"] },
+          { "id": "c4", "level": "T3", "paths": ["services/auth/token.go"] },
+          { "id": "c5", "level": "T3", "paths": ["services/auth/token_test.go"] },
+          {
+            "id": "c6",
+            "level": "T0",
+            "paths": ["services/auth/internal/gen/server.go", "services/auth/internal/gen/types.go"],
+            "derivation": {
+              "outputs": ["services/auth/internal/gen/**"],
+              "verified": true,
+              "inherited_level": "T3"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T3" }
+      }
+    },
+    {
+      "id": "aggregation/floor/derivation-tampered",
+      "kind": "scope_floor",
+      "description": "A derivation proof that fails verification (outputs not byte-identical) is void: the output paths contribute the commit's raw level, flooring the scope.",
+      "spec": "§4.4",
+      "inputs": {
+        "scopes": { "services/auth/**": "auth" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/api/openapi.yaml"] },
+          {
+            "id": "c2",
+            "level": "T0",
+            "paths": ["services/auth/internal/gen/server.go"],
+            "derivation": {
+              "outputs": ["services/auth/internal/gen/**"],
+              "verified": false,
+              "inherited_level": "T3"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T0" }
+      }
+    },
+    {
+      "id": "aggregation/floor/derivation-partial-outputs",
+      "kind": "scope_floor",
+      "description": "A verified derivation re-levels only the declared output paths: a path smuggled alongside the regenerated outputs contributes the commit's raw level.",
+      "spec": "§4.4",
+      "inputs": {
+        "scopes": { "services/auth/**": "auth" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/api/openapi.yaml"] },
+          {
+            "id": "c2",
+            "level": "T0",
+            "paths": ["services/auth/internal/gen/server.go", "services/auth/middleware.go"],
+            "derivation": {
+              "outputs": ["services/auth/internal/gen/**"],
+              "verified": true,
+              "inherited_level": "T3"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T0" }
+      }
+    },
+    {
+      "id": "aggregation/meta-path/appendix-a-step-5",
+      "kind": "meta_path",
+      "description": "Appendix A step 5: a commit editing .semver-trust/policy.toml authored at T2 while meta-paths require T3 — verification fails outright; no tag is produced.",
+      "spec": "Appendix A",
+      "inputs": {
+        "meta": {
+          "paths": [".semver-trust/**", ".github/workflows/**", "CODEOWNERS"],
+          "required_level": "T3"
+        },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/billing/invoice.go"] },
+          { "id": "c2", "level": "T2", "paths": [".semver-trust/policy.toml"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "violations": ["c2"]
+      }
+    },
+    {
+      "id": "aggregation/meta-path/workflows-below-required",
+      "kind": "meta_path",
+      "description": "CI workflows are meta-paths: a T0 commit editing .github/workflows/** fails verification even when every scope-level floor would merely demote — fail, not demote (the config protects the system; the system must protect the config).",
+      "spec": "§5.4",
+      "inputs": {
+        "meta": {
+          "paths": [".semver-trust/**", ".github/workflows/**", "CODEOWNERS"],
+          "required_level": "T3"
+        },
+        "commits": [
+          { "id": "c1", "level": "T0", "paths": [".github/workflows/release.yml"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "violations": ["c1"]
+      }
+    },
+    {
+      "id": "aggregation/meta-path/at-required-level",
+      "kind": "meta_path",
+      "description": "A meta-path commit at the required level verifies; meta-paths gate on the maximum required level, not on scope membership.",
+      "spec": "§5.4",
+      "inputs": {
+        "meta": {
+          "paths": [".semver-trust/**", ".github/workflows/**", "CODEOWNERS"],
+          "required_level": "T3"
+        },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": [".semver-trust/policy.toml"] },
+          { "id": "c2", "level": "T1", "paths": ["pkg/common/util.go"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verified",
+        "violations": []
+      }
+    }
+  ]
+}

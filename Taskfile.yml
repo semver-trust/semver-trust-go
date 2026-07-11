@@ -116,6 +116,12 @@ tasks:
         fi
         go tool -modfile={{.TOOL_MODFILE}} gotestsum --format testname -- -count=1 ./...
 
+  conformance:
+    desc: Run the conformance suite against the vendored, digest-pinned vectors (ADR-021)
+    cmds:
+      - go tool -modfile={{.TOOL_MODFILE}} gotestsum --format testname -- -count=1 -run '^Test(Conformance|VendoredBytesMatchManifest|ManifestPin)'
+        ./...
+
   vuln:
     desc: Check for known vulnerabilities
     cmds:

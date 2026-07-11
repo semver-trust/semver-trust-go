@@ -1,0 +1,306 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.2",
+  "description": "Per-commit trust level assignment vectors for SemVer-Trust (spec/semver-trust.md §3.2, §3.3, §4.1-§4.2, Appendix B). 'matrix' vectors carry already-classified authorship/review classes and assert the resulting level; 'classify' vectors carry raw commit facts and assert both the derived classes and the level.",
+  "vectors": [
+    {
+      "id": "levels/matrix/agent-none",
+      "kind": "matrix",
+      "description": "Agent-authored, no review: fully autonomous.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "agent", "review": "none" },
+      "expected": { "level": "T0" }
+    },
+    {
+      "id": "levels/matrix/agent-agent_independent",
+      "kind": "matrix",
+      "description": "Agent-authored with independent agent review (§3.3): machine corroboration.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "agent", "review": "agent_independent" },
+      "expected": { "level": "T1" }
+    },
+    {
+      "id": "levels/matrix/agent-human_distinct",
+      "kind": "matrix",
+      "description": "Agent-authored, reviewed by a distinct human: one accountable human.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "agent", "review": "human_distinct" },
+      "expected": { "level": "T2" }
+    },
+    {
+      "id": "levels/matrix/mixed-none",
+      "kind": "matrix",
+      "description": "Mixed authorship floors to the agent row; no review.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "mixed", "review": "none" },
+      "expected": { "level": "T0" }
+    },
+    {
+      "id": "levels/matrix/mixed-agent_independent",
+      "kind": "matrix",
+      "description": "Mixed authorship with independent agent review.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "mixed", "review": "agent_independent" },
+      "expected": { "level": "T1" }
+    },
+    {
+      "id": "levels/matrix/mixed-human_distinct",
+      "kind": "matrix",
+      "description": "Mixed authorship reviewed by a distinct human.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "mixed", "review": "human_distinct" },
+      "expected": { "level": "T2" }
+    },
+    {
+      "id": "levels/matrix/ambiguous-none",
+      "kind": "matrix",
+      "description": "Ambiguous authorship floors to the agent row (§3.2 note 1); no review.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "ambiguous", "review": "none" },
+      "expected": { "level": "T0" }
+    },
+    {
+      "id": "levels/matrix/ambiguous-agent_independent",
+      "kind": "matrix",
+      "description": "Ambiguous authorship with independent agent review.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "ambiguous", "review": "agent_independent" },
+      "expected": { "level": "T1" }
+    },
+    {
+      "id": "levels/matrix/ambiguous-human_distinct",
+      "kind": "matrix",
+      "description": "Ambiguous authorship reviewed by a distinct human.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "ambiguous", "review": "human_distinct" },
+      "expected": { "level": "T2" }
+    },
+    {
+      "id": "levels/matrix/human-none",
+      "kind": "matrix",
+      "description": "Human-authored, no review: one human stands behind it.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "human", "review": "none" },
+      "expected": { "level": "T2" }
+    },
+    {
+      "id": "levels/matrix/human-agent_independent",
+      "kind": "matrix",
+      "description": "Human-authored with independent agent review: agent corroboration does not add an accountable human, so it stays T2.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "human", "review": "agent_independent" },
+      "expected": { "level": "T2" }
+    },
+    {
+      "id": "levels/matrix/human-human_distinct",
+      "kind": "matrix",
+      "description": "Human-authored and reviewed by a distinct verified human: two accountable humans.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "human", "review": "human_distinct" },
+      "expected": { "level": "T3" }
+    },
+    {
+      "id": "levels/matrix/human-human_same_identity",
+      "kind": "matrix",
+      "description": "Human self-review does not count as review (§3.2 note 2); classification is human authorship with no qualifying review, so T2 not T3.",
+      "spec": "§3.2",
+      "inputs": { "authorship": "human", "review": "human_same_identity" },
+      "expected": { "level": "T2" }
+    },
+    {
+      "id": "levels/classify/human-provenance-machine-signer",
+      "kind": "classify",
+      "description": "Provenance: human trailer on a commit signed by a machine identity. The signer identity class governs and the conflict is ambiguous (§4.1 rule 1); ambiguity floors to the agent row.",
+      "spec": "§4.1",
+      "inputs": {
+        "signer_identity_class": "agent",
+        "trailers": { "Provenance": "human" },
+        "policy": { "trailers_require": false },
+        "review": null
+      },
+      "expected": { "authorship": "ambiguous", "review": "none", "level": "T0" }
+    },
+    {
+      "id": "levels/classify/trailers-absent-mandated",
+      "kind": "classify",
+      "description": "Under a trailer-mandating policy, required provenance trailers are absent, so authorship is ambiguous even for a human signer (§3.2 note 1). In practice §4.1 server-side enforcement rejects such a commit before it lands; this vector fixes the classification rule for the case where it is evaluated.",
+      "spec": "§3.2",
+      "inputs": {
+        "signer_identity_class": "human",
+        "trailers": {},
+        "policy": { "trailers_require": true },
+        "review": null
+      },
+      "expected": { "authorship": "ambiguous", "review": "none", "level": "T0" }
+    },
+    {
+      "id": "levels/classify/coauthors-dont-count",
+      "kind": "classify",
+      "description": "Unsigned Co-authored-by trailers (including agent tooling defaults) are corroborating evidence but add no accountable identity (§3.2 note 3); the single verified human signer caps the commit at T2.",
+      "spec": "§3.2",
+      "inputs": {
+        "signer_identity_class": "human",
+        "trailers": {
+          "Provenance": "human",
+          "Co-authored-by": ["Agent Bot <bot@ci.example>", "claude <noreply@anthropic.com>"]
+        },
+        "policy": { "trailers_require": false },
+        "review": null
+      },
+      "expected": { "authorship": "human", "review": "none", "level": "T2" }
+    },
+    {
+      "id": "levels/classify/agent-review-same-identity",
+      "kind": "classify",
+      "description": "Agent review by the same identity as the author fails §3.3 condition 2 (distinct identity); the review does not qualify and collapses to none, so agent authorship stays T0.",
+      "spec": "§3.3",
+      "inputs": {
+        "signer_identity_class": "agent",
+        "trailers": { "Provenance": "agent" },
+        "policy": { "trailers_require": false },
+        "review": {
+          "reviewer_identity_class": "agent",
+          "reviewer_identity": "agent-a",
+          "author_identity": "agent-a",
+          "separate_context": true,
+          "signed_attestation": true
+        }
+      },
+      "expected": { "authorship": "agent", "review": "none", "level": "T0" }
+    },
+    {
+      "id": "levels/classify/agent-review-shared-context",
+      "kind": "classify",
+      "description": "Agent review that shares conversational/working state with the author fails §3.3 condition 1 (separate execution context); the review does not qualify.",
+      "spec": "§3.3",
+      "inputs": {
+        "signer_identity_class": "agent",
+        "trailers": { "Provenance": "agent" },
+        "policy": { "trailers_require": false },
+        "review": {
+          "reviewer_identity_class": "agent",
+          "reviewer_identity": "agent-b",
+          "author_identity": "agent-a",
+          "separate_context": false,
+          "signed_attestation": true
+        }
+      },
+      "expected": { "authorship": "agent", "review": "none", "level": "T0" }
+    },
+    {
+      "id": "levels/classify/agent-review-unsigned",
+      "kind": "classify",
+      "description": "Agent review that produces no signed review attestation fails §3.3 condition 3; the review does not qualify.",
+      "spec": "§3.3",
+      "inputs": {
+        "signer_identity_class": "agent",
+        "trailers": { "Provenance": "agent" },
+        "policy": { "trailers_require": false },
+        "review": {
+          "reviewer_identity_class": "agent",
+          "reviewer_identity": "agent-b",
+          "author_identity": "agent-a",
+          "separate_context": true,
+          "signed_attestation": false
+        }
+      },
+      "expected": { "authorship": "agent", "review": "none", "level": "T0" }
+    },
+    {
+      "id": "levels/classify/agent-review-independent",
+      "kind": "classify",
+      "description": "Agent review satisfying all three §3.3 conditions — separate context, distinct identity, signed attestation — qualifies as independent, lifting agent-authored code to T1.",
+      "spec": "§3.3",
+      "inputs": {
+        "signer_identity_class": "agent",
+        "trailers": { "Provenance": "agent" },
+        "policy": { "trailers_require": false },
+        "review": {
+          "reviewer_identity_class": "agent",
+          "reviewer_identity": "agent-b",
+          "author_identity": "agent-a",
+          "separate_context": true,
+          "signed_attestation": true
+        }
+      },
+      "expected": { "authorship": "agent", "review": "agent_independent", "level": "T1" }
+    },
+    {
+      "id": "levels/classify/self-review-same-identity",
+      "kind": "classify",
+      "description": "A human reviewing their own commit is not review (§3.2 note 2); classification is human authorship with no qualifying review → T2, not T3.",
+      "spec": "§3.2",
+      "inputs": {
+        "signer_identity_class": "human",
+        "trailers": { "Provenance": "human" },
+        "policy": { "trailers_require": false },
+        "review": {
+          "reviewer_identity_class": "human",
+          "reviewer_identity": "alice@example.com",
+          "author_identity": "alice@example.com",
+          "separate_context": true,
+          "signed_attestation": true
+        }
+      },
+      "expected": { "authorship": "human", "review": "none", "level": "T2" }
+    },
+    {
+      "id": "levels/classify/human-review-distinct",
+      "kind": "classify",
+      "description": "Distinct verified human author and reviewer → two accountable humans → T3.",
+      "spec": "§3.2",
+      "inputs": {
+        "signer_identity_class": "human",
+        "trailers": { "Provenance": "human" },
+        "policy": { "trailers_require": false },
+        "review": {
+          "reviewer_identity_class": "human",
+          "reviewer_identity": "bob@example.com",
+          "author_identity": "alice@example.com",
+          "separate_context": true,
+          "signed_attestation": true
+        }
+      },
+      "expected": { "authorship": "human", "review": "human_distinct", "level": "T3" }
+    },
+    {
+      "id": "levels/classify/mixed-provenance-trailer",
+      "kind": "classify",
+      "description": "A commit declaring Provenance: mixed classifies as mixed authorship, which floors to the agent row; no review → T0.",
+      "spec": "§4.1",
+      "inputs": {
+        "signer_identity_class": "human",
+        "trailers": { "Provenance": "mixed" },
+        "policy": { "trailers_require": false },
+        "review": null
+      },
+      "expected": { "authorship": "mixed", "review": "none", "level": "T0" }
+    },
+    {
+      "id": "levels/classify/agent-signer-consistent",
+      "kind": "classify",
+      "description": "Machine signer with a consistent Provenance: agent trailer under a trailer-mandating policy → clean agent authorship → T0.",
+      "spec": "§4.2",
+      "inputs": {
+        "signer_identity_class": "agent",
+        "trailers": { "Provenance": "agent", "Provenance-Agent": "claude-code/2.8" },
+        "policy": { "trailers_require": true },
+        "review": null
+      },
+      "expected": { "authorship": "agent", "review": "none", "level": "T0" }
+    },
+    {
+      "id": "levels/classify/human-signer-consistent",
+      "kind": "classify",
+      "description": "Human signer with a consistent Provenance: human trailer → human authorship → T2.",
+      "spec": "§4.2",
+      "inputs": {
+        "signer_identity_class": "human",
+        "trailers": { "Provenance": "human" },
+        "policy": { "trailers_require": true },
+        "review": null
+      },
+      "expected": { "authorship": "human", "review": "none", "level": "T2" }
+    }
+  ]
+}

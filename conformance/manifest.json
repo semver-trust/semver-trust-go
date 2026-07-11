@@ -1,0 +1,16 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.2",
+  "source": {
+    "repository": "https://github.com/semver-trust/spec",
+    "commit": "cf46ba4508df8428f2594e5653503adaf4454a45"
+  },
+  "files": {
+    "levels.json": "sha256:bcd117ae2b1a83838d829394716f1ff35dcdb66e0500405379f7bbf1945bf6b4",
+    "precedence.json": "sha256:d4fe8b6671f2009a1ee1cca1d97559fa2476882ceae4cac76ea7d14bdb7eb3cf",
+    "aggregation.json": "sha256:7b6cbed22c01706f231d1d48a740dc46aac883e01aa9009cd65560ab33284d66",
+    "propagation.json": "sha256:f7afcc7343e224b1eaee5621dd7ccc352ffeb7eb2101440eec3f6dd6ecefbdba",
+    "decision.json": "sha256:01e2e2ac72f875961e8213ca19d1051c15e091174f93009653d39cf07ad00d6a",
+    "LICENSE": "sha256:c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c"
+  }
+}
