@@ -32,6 +32,22 @@ FILES = (
     "propagation.json",
     "decision.json",
     "LICENSE",
+    # Cryptographic fixture material (docs/conformance-crypto-fixtures.md):
+    # the injected registry, the deterministic fixture-repo builder, the
+    # signature vectors, and the vendored test keys they reference.
+    "crypto/allowed_signers",
+    "crypto/build-fixture-repos.sh",
+    "crypto/signature-vectors.json",
+    "crypto/keys/human-alice",
+    "crypto/keys/human-alice.pub",
+    "crypto/keys/human-bob",
+    "crypto/keys/human-bob.pub",
+    "crypto/keys/agent-ci-bot",
+    "crypto/keys/agent-ci-bot.pub",
+    "crypto/keys/unknown-mallory",
+    "crypto/keys/unknown-mallory.pub",
+    "crypto/keys/revoked-carol",
+    "crypto/keys/revoked-carol.pub",
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -56,7 +72,9 @@ def main() -> int:
     spec_version = None
     for name in FILES:
         data = fetch(commit, name)
-        (VENDOR / name).write_bytes(data)
+        target = VENDOR / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
         digests[name] = "sha256:" + hashlib.sha256(data).hexdigest()
         if name == "levels.json":
             spec_version = json.loads(data)["spec_version"]

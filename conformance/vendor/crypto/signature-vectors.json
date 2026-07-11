@@ -1,0 +1,73 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.2",
+  "description": "SSH commit-signature verification vectors for SemVer-Trust (spec/semver-trust.md §4.2, §5.2, §10 step 3; docs/conformance-crypto-fixtures.md). Fixture repositories are built by build-fixture-repos.sh (deterministic: pinned epoch, sha1 object format, deterministic Ed25519 signatures); commits are addressed by role tag AND pinned SHA — a SHA mismatch means the fixture build recipe drifted (expected <sha> for role <label>, got another; the recipe or its inputs changed), not that verification is wrong. The verifier consumes keys/allowed_signers as injected trust material and verifies at the pinned verification_time (ADR-018); every 'verification_failed' expectation is an abort — unverifiable is never T0 (§5.2).",
+  "verification_time": "2026-01-01T00:00:00Z",
+  "allowed_signers": "allowed_signers",
+  "vectors": [
+    {
+      "id": "crypto/ssh/human-author-verifies",
+      "kind": "ssh_signature",
+      "description": "An enrolled human key (human-alice) verifies and resolves to its principal.",
+      "spec": "§4.2",
+      "inputs": { "repo": "signed-history", "role": "alice-commit", "sha": "e076050f6714ea6be852fce9c47ff65b05c911b3" },
+      "expected": { "outcome": "verified", "principal": "alice@semver-trust.test" }
+    },
+    {
+      "id": "crypto/ssh/agent-signer-verifies",
+      "kind": "ssh_signature",
+      "description": "An enrolled machine identity (agent-ci-bot) verifies and resolves to its principal; identity class mapping is the policy layer's job, not the signature verifier's.",
+      "spec": "§4.2",
+      "inputs": { "repo": "signed-history", "role": "ci-bot-commit", "sha": "80e2be6297494cd2e3c85d2ace1c7579edac3f74" },
+      "expected": { "outcome": "verified", "principal": "ci-bot@semver-trust.test" }
+    },
+    {
+      "id": "crypto/ssh/second-human-verifies",
+      "kind": "ssh_signature",
+      "description": "The second, distinct enrolled human (human-bob) — the reviewer identity that makes T3 reachable — verifies independently.",
+      "spec": "§4.2",
+      "inputs": { "repo": "signed-history", "role": "bob-commit", "sha": "9672f0b2f901fe632412c8f21026a7467fba585b" },
+      "expected": { "outcome": "verified", "principal": "bob@semver-trust.test" }
+    },
+    {
+      "id": "crypto/ssh/unknown-signer-aborts",
+      "kind": "ssh_signature",
+      "description": "unknown-mallory holds a valid key that is absent from every allowed-signers file: verification fails closed. Unverifiable is not T0 — the release aborts (§5.2, §10 step 3).",
+      "spec": "§5.2",
+      "inputs": { "repo": "unknown-signer", "role": "mallory-commit", "sha": "f43915bed7708765d5ff171244cec6ff4b73dc16" },
+      "expected": { "outcome": "verification_failed", "reason": "unknown_signer" }
+    },
+    {
+      "id": "crypto/ssh/revoked-signer-aborts",
+      "kind": "ssh_signature",
+      "description": "revoked-carol is enrolled with valid-before preceding the fixture epoch: enrolled-but-invalid at the injected verification time, a failure mode distinct from unknown.",
+      "spec": "§5.2",
+      "inputs": { "repo": "revoked-signer", "role": "carol-commit", "sha": "7ba811b12e4e8d27afc1cb03c34718a9726349cf" },
+      "expected": { "outcome": "verification_failed", "reason": "revoked_signer" }
+    },
+    {
+      "id": "crypto/ssh/gpg-family-fails-closed",
+      "kind": "ssh_signature",
+      "description": "The key-family rider (fixture plan §2.1): a commit carrying a PGP-armored signature under an SSH-only verifier is unverifiable and MUST abort — never skipped, never silently degraded. GPG support, when it lands, changes this vector's reason, not its fail-closed shape.",
+      "spec": "§5.2",
+      "inputs": { "repo": "gpg-signed", "role": "gpg-commit", "sha": "772d58359845dcb35ab3d6434a055fd9209baa3f" },
+      "expected": { "outcome": "verification_failed", "reason": "unsupported_key_family" }
+    },
+    {
+      "id": "crypto/ssh/tampered-payload-aborts",
+      "kind": "ssh_signature",
+      "description": "A commit whose message was altered after signing: the sshsig is well-formed but does not cover the bytes; verification fails closed.",
+      "spec": "§5.2",
+      "inputs": { "repo": "tampered", "role": "tampered-commit", "sha": "9872f130d83d48fe1210120685863018659c5eb8" },
+      "expected": { "outcome": "verification_failed", "reason": "invalid_signature" }
+    },
+    {
+      "id": "crypto/ssh/unsigned-commit-aborts",
+      "kind": "ssh_signature",
+      "description": "A commit with no signature at all is unverifiable: every commit on a protected branch MUST be signed (§4.2). Synthetic case — the harness strips the signature from the alice commit rather than a fixture repo carrying one.",
+      "spec": "§4.2",
+      "inputs": { "repo": "signed-history", "role": "alice-commit", "sha": "e076050f6714ea6be852fce9c47ff65b05c911b3", "strip_signature": true },
+      "expected": { "outcome": "verification_failed", "reason": "unsigned" }
+    }
+  ]
+}

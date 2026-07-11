@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	iofs "io/fs"
 	"regexp"
 	"strings"
 	"testing"
@@ -34,14 +35,17 @@ func TestVendoredBytesMatchManifest(t *testing.T) {
 		}
 	}
 
-	entries, err := fs.ReadDir("vendor")
+	err = iofs.WalkDir(fs, "vendor", func(path string, d iofs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if _, listed := m.Files[strings.TrimPrefix(path, "vendor/")]; !listed {
+			t.Errorf("%s is not listed in the manifest", path)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if _, listed := m.Files[e.Name()]; !listed {
-			t.Errorf("vendor/%s is not listed in the manifest", e.Name())
-		}
 	}
 }
 

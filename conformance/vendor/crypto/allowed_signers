@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# semver-trust conformance allowed-signers registry — TEST KEYS, DO NOT USE.
+# Injected trust material (ADR-018): fixtures verify against exactly this
+# file at the pinned epoch 2026-01-01T00:00:00Z. revoked-carol is enrolled
+# with a valid-before instant preceding the epoch (enrolled-but-invalid,
+# distinct from unknown-mallory, who is absent from this file entirely).
+alice@semver-trust.test namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKulHisNBN0fbk5LFMzdZ4+vCIt4Kmsjhj9NkzdjljmH semver-trust-conformance TEST KEY - DO NOT USE (human-alice)
+bob@semver-trust.test namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICdCk4sA9Yfv/X1ggIyOXXi/uIZjrxW4mJkMbv9Kfs8W semver-trust-conformance TEST KEY - DO NOT USE (human-bob)
+ci-bot@semver-trust.test namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGP+sxSQ/8Ebhsg0vTvZrAMqs83lcoMCtukRiVmbM8JH semver-trust-conformance TEST KEY - DO NOT USE (agent-ci-bot)
+carol@semver-trust.test namespaces="git",valid-before="20251231" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIES4jD4W0mqSVmZ49VQUpDtln9XX4TQHRekz6jx9ghVA semver-trust-conformance TEST KEY - DO NOT USE (revoked-carol)
