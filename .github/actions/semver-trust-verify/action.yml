@@ -1,0 +1,210 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+#
+# semver-trust-verify — composite action running `semver-trust verify`
+# (spec §10 steps 1–7) against a repository range, writing a job-summary
+# section and a shields.io endpoint badge (GO-050, ADR-017's demand-side
+# consumer).
+#
+# Honesty contract (P4, ADR-008): a verification abort is reported as
+# "unverifiable" with the failing §10 step — never rendered as a pass. In
+# informational mode the job stays green while the abort is still reported
+# truthfully in the summary and the badge.
+name: semver-trust-verify
+description: Verify a release range (SemVer-Trust spec §10 steps 1–7); emit a job summary and endpoint badge.
+
+inputs:
+  repo-path:
+    description: Repository to verify (passed to `verify --repo`).
+    required: false
+    default: '.'
+  from:
+    description: Previous release tag; empty means first release (root..TO).
+    required: false
+    default: ''
+  to:
+    description: Proposed release commit (revision).
+    required: false
+    default: 'HEAD'
+  policy:
+    description: Policy file path within TO's tree.
+    required: false
+    default: '.semver-trust/policy.toml'
+  allowed-signers:
+    description: Filesystem allowed-signers override; empty resolves the policy's in-tree path.
+    required: false
+    default: ''
+  verify-time:
+    description: Verification instant (RFC3339); empty means now.
+    required: false
+    default: ''
+  informational:
+    # An abort is still reported honestly (summary + "unverifiable" badge);
+    # this never turns an abort into a pass.
+    description: When 'true', a verification abort does NOT fail the job.
+    required: false
+    default: 'false'
+  badge-artifact:
+    # Artifact names must be unique per workflow run.
+    description: Artifact name for badge.json; override when the action runs more than once per run.
+    required: false
+    default: 'semver-trust-badge'
+
+outputs:
+  outcome:
+    description: verified | aborted
+    value: ${{ steps.verify.outputs.outcome }}
+  effective:
+    description: Effective trust level (e.g. T2) when verified; empty on abort.
+    value: ${{ steps.verify.outputs.effective }}
+  badge-path:
+    description: Filesystem path of the generated badge.json.
+    value: ${{ steps.verify.outputs.badge-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+      with:
+        go-version-file: ${{ github.action_path }}/../../../go.mod
+        cache-dependency-path: ${{ github.action_path }}/../../../go.sum
+
+    # The verifier is built from the action's own repository checkout, so a
+    # remote `uses:` gets the CLI at the pinned action ref — no prebuilt
+    # binaries to trust.
+    - name: Build semver-trust
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      run: |
+        set -euo pipefail
+        mkdir -p "${RUNNER_TEMP}/semver-trust-verify/bin"
+        go build -o "${RUNNER_TEMP}/semver-trust-verify/bin/semver-trust" ./cmd/semver-trust
+
+    - name: Run verify
+      id: verify
+      shell: bash
+      env:
+        INPUT_REPO_PATH: ${{ inputs.repo-path }}
+        INPUT_FROM: ${{ inputs.from }}
+        INPUT_TO: ${{ inputs.to }}
+        INPUT_POLICY: ${{ inputs.policy }}
+        INPUT_ALLOWED_SIGNERS: ${{ inputs.allowed-signers }}
+        INPUT_VERIFY_TIME: ${{ inputs.verify-time }}
+        INPUT_INFORMATIONAL: ${{ inputs.informational }}
+      run: |
+        set -euo pipefail
+        workdir="${RUNNER_TEMP}/semver-trust-verify"
+        report="${workdir}/report.json"
+        errfile="${workdir}/stderr.txt"
+        badge="${workdir}/badge.json"
+
+        set +e
+        "${workdir}/bin/semver-trust" verify \
+          --repo "${INPUT_REPO_PATH}" \
+          --from "${INPUT_FROM}" \
+          --to "${INPUT_TO}" \
+          --policy "${INPUT_POLICY}" \
+          --allowed-signers "${INPUT_ALLOWED_SIGNERS}" \
+          --verify-time "${INPUT_VERIFY_TIME}" \
+          --json >"${report}" 2>"${errfile}"
+        code=$?
+        set -e
+
+        reason=''
+        if [ "${code}" -eq 0 ]; then
+          outcome=verified
+          # Effective trust of the headline component (propagation.target),
+          # falling back to the first component.
+          effective="$(jq -r '.propagation as $p
+            | (first($p.components[] | select(.name == $p.target)) // $p.components[0])
+            | .effective' "${report}")"
+          # Badge color orders accountability (ADR-019), not pass/fail:
+          # T3 green, T2 yellowgreen, T1 orange, T0 red. Unverifiable is
+          # lightgrey — no trust claim can be made at all (ADR-008).
+          case "${effective}" in
+            T3) color=green ;;
+            T2) color=yellowgreen ;;
+            T1) color=orange ;;
+            *) color=red ;;
+          esac
+          message="${effective} ✓"
+        else
+          outcome=aborted
+          effective=''
+          reason="$(sed -n 's/^Error: //p' "${errfile}" | head -n 1)"
+          [ -n "${reason}" ] || reason="$(tail -n 1 "${errfile}")"
+          [ -n "${reason}" ] || reason="verify exited ${code} with no diagnostic"
+          color=lightgrey
+          message=unverifiable
+        fi
+
+        # shields.io endpoint schema:
+        # https://shields.io/badges/endpoint-badge
+        jq -n --arg message "${message}" --arg color "${color}" \
+          '{schemaVersion: 1, label: "SemVer-Trust", message: $message, color: $color}' \
+          >"${badge}"
+
+        from_desc="${INPUT_FROM:-(first release: root)}"
+        {
+          echo '## SemVer-Trust verify'
+          echo ''
+          if [ "${outcome}" = verified ]; then
+            echo "**SemVer-Trust: ${effective} ✓** — \`${INPUT_REPO_PATH}\`" \
+              "range ${from_desc}..${INPUT_TO} verified (spec §10 steps 1–7)."
+            echo ''
+            jq -r '
+              "| §10 step | result |",
+              "| --- | --- |",
+              "| 1 — load policy | `\(.policy.path)` digest `\(.policy.digest[0:12])…`, threshold \(.policy.threshold), strategy \(.policy.strategy) |",
+              "| 1 — meta-path (§5.4) | \(if .meta_path.passed then "passed" else "VIOLATED" end), required \(.meta_path.required_level) |",
+              "| 2–3 — commits | \(.commits | length) verified: \(.commits | map("`\(.short)` \(.level)") | join(", ")) |",
+              "| 4 — derivations | \(.derivations | length) rule(s) |",
+              "| 5 — own floors | \(.scopes | map("\(.scope)=\(.own_floor)") | join(", ")) |",
+              "| 6 — effective | \(.propagation.components | map("\(.name)=\(.effective)") | join(", ")) |",
+              "| 7 — evidence | \(.evidence.changed_files) changed file(s), semantic floor \(.evidence.semantic_floor) (\(.evidence.semantic_floor_source)), blast \(.evidence.blast_score) |"
+            ' "${report}"
+          else
+            echo "**SemVer-Trust: unverifiable** — ${reason}"
+            if [ "${INPUT_INFORMATIONAL}" = 'true' ]; then
+              echo ''
+              echo '_Informational mode: the job stays green, but this range' \
+                'is NOT verified — the abort above is the honest result' \
+                '(unverifiable is never T0, spec §5.2)._'
+            fi
+          fi
+        } >>"${GITHUB_STEP_SUMMARY}"
+
+        {
+          echo "outcome=${outcome}"
+          echo "effective=${effective}"
+          echo "badge-path=${badge}"
+          echo "reason=${reason}"
+        } >>"${GITHUB_OUTPUT}"
+
+    - name: Upload badge artifact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: ${{ inputs.badge-artifact }}
+        path: ${{ steps.verify.outputs.badge-path }}
+
+    # Runs after the badge and summary are written, so an enforced failure
+    # still leaves the honest report behind.
+    - name: Enforce verification result
+      shell: bash
+      env:
+        OUTCOME: ${{ steps.verify.outputs.outcome }}
+        REASON: ${{ steps.verify.outputs.reason }}
+        INFORMATIONAL: ${{ inputs.informational }}
+      run: |-
+        set -euo pipefail
+        if [ "${OUTCOME}" = verified ]; then
+          echo 'SemVer-Trust verify: verified.'
+          exit 0
+        fi
+        if [ "${INFORMATIONAL}" = true ]; then
+          echo "::notice::SemVer-Trust verify aborted (informational): ${REASON}"
+          exit 0
+        fi
+        echo "::error::SemVer-Trust verify aborted: ${REASON}"
+        exit 1
