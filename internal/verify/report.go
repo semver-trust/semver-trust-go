@@ -69,10 +69,20 @@ type CommitReport struct {
 	Signer      string   `json:"signer"`
 	Fingerprint string   `json:"fingerprint"`
 	Provenance  string   `json:"provenance,omitempty"`
-	Merge       bool     `json:"merge"`
-	Paths       []string `json:"paths"`
+	// Trailers is the commit's full self-asserted trailer block (§4.1),
+	// advisory by definition — preserved so the release attestation's
+	// provenance vector (§8.1) can carry it. First value wins per key.
+	Trailers map[string]string `json:"trailers,omitempty"`
+	Merge    bool              `json:"merge"`
+	Paths    []string          `json:"paths"`
 	// Derivation names the rule re-leveling this commit's outputs, or is empty.
 	Derivation string `json:"derivation,omitempty"`
+	// ReviewIdentity is the verified reviewer identity when a review
+	// attestation was cryptographically consumed for this commit (§4.3).
+	ReviewIdentity string `json:"review_identity,omitempty"`
+	// ReviewAttestation references the consumed review attestation in the
+	// store (refs/attestations/<sha>/<digest>) — the §8.1 attestation ref.
+	ReviewAttestation string `json:"review_attestation,omitempty"`
 	// ReviewNote records honest degradation (e.g. a present-but-unverifiable
 	// review attestation classified none because no attestation-signers were
 	// provided).
@@ -120,6 +130,10 @@ type ComponentEffective struct {
 	Own         string `json:"own"`
 	Effective   string `json:"effective"`
 	FloorSource string `json:"floor_source"`
+	// Dependencies are the component's direct internal dependencies from the
+	// workspace graph — what a release attestation pins (§5.3, §8.1). Empty
+	// with no graph adapter.
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
 // EvidenceReport is the honest v1 evidence collection (§10 step 7, §6). Blast

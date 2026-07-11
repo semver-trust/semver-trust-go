@@ -88,12 +88,20 @@ func propagate(repo string, opts Options, pol *policy.Policy, tcommits []trust.C
 		Target:  targetComponent(opts.Component, names),
 		Note:    "v1 component↔scope mapping: own trust per component is the floor over commits touching its directory subtree; untouched components take the neutral floor T3 (cross-range propagation deferred, §12.4)",
 	}
+	deps := map[string][]string{}
+	for _, e := range g.Edges {
+		deps[e[0]] = append(deps[e[0]], e[1])
+	}
+	for _, ds := range deps {
+		sort.Strings(ds)
+	}
 	for _, name := range names {
 		report.Components = append(report.Components, ComponentEffective{
-			Name:        name,
-			Own:         own[name].String(),
-			Effective:   eff[name].Level.String(),
-			FloorSource: eff[name].FloorSource,
+			Name:         name,
+			Own:          own[name].String(),
+			Effective:    eff[name].Level.String(),
+			FloorSource:  eff[name].FloorSource,
+			Dependencies: deps[name],
 		})
 	}
 	return report, nil
