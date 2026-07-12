@@ -25,6 +25,15 @@ type reviewPredicate struct {
 	} `json:"predicate"`
 }
 
+// reviewResolution is resolveReview's outcome: the classification facts, the
+// storage ref of the consumed attestation (the §8.1 review-attestation
+// reference; empty when none was consumed), and the honest-degradation note.
+type reviewResolution struct {
+	facts *trust.ReviewFacts
+	ref   string
+	note  string
+}
+
 // resolveReview locates and verifies the review attestation covering a commit
 // (§10 step 3, §4.3). Its three outcomes are deliberate:
 //
@@ -36,26 +45,29 @@ type reviewPredicate struct {
 //   - Envelopes stored and a registry given → each is verified; any that fails
 //     to verify aborts (a stored attestation that does not verify is a
 //     fail-closed stop, §8.2), and the first verified review predicate whose
-//     subject covers the commit supplies the review facts.
+//     subject covers the commit supplies the review facts and is recorded as
+//     the consumed attestation ref.
 //
 // The author identity threaded in is the commit's verified signer principal,
 // used for the §3.2/§3.3 distinct-identity tests.
-func resolveReview(store attest.GitRefStore, v *attest.Verifier, sha, authorIdentity string, at time.Time) (*trust.ReviewFacts, string, error) {
+func resolveReview(store attest.GitRefStore, v *attest.Verifier, sha, authorIdentity string, at time.Time) (reviewResolution, error) {
 	envelopes, err := store.List(sha)
 	if err != nil {
-		return nil, "", err
+		return reviewResolution{}, err
 	}
 	if len(envelopes) == 0 {
-		return nil, "", nil
+		return reviewResolution{}, nil
 	}
 	if v == nil {
-		return nil, "review attestation present but unverifiable (no --attestation-signers); classified none", nil
+		return reviewResolution{
+			note: "review attestation present but unverifiable (no --attestation-signers); classified none",
+		}, nil
 	}
 
 	for _, env := range envelopes {
 		stmt, err := v.Verify(env, at)
 		if err != nil {
-			return nil, "", err // a stored attestation that fails verification aborts (§8.2)
+			return reviewResolution{}, err // a stored attestation that fails verification aborts (§8.2)
 		}
 		if stmt.PredicateType != attest.PredicateReview {
 			continue // e.g. a release attestation filed under the commit — not a review
@@ -65,11 +77,14 @@ func resolveReview(store attest.GitRefStore, v *attest.Verifier, sha, authorIden
 		}
 		facts, err := reviewFacts(stmt, authorIdentity)
 		if err != nil {
-			return nil, "", err
+			return reviewResolution{}, err
 		}
-		return facts, "", nil
+		if facts == nil {
+			continue
+		}
+		return reviewResolution{facts: facts, ref: attest.EnvelopeRef(sha, env)}, nil
 	}
-	return nil, "", nil
+	return reviewResolution{}, nil
 }
 
 // reviewFacts builds the trust.ReviewFacts from a verified review statement.

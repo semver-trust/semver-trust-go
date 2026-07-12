@@ -3,7 +3,7 @@
   "spec_version": "0.2",
   "source": {
     "repository": "https://github.com/semver-trust/spec",
-    "commit": "d7095bc556a74f9678bd354acaf3f307c20ee1b4"
+    "commit": "8d2370c49db8ae0e7866aa51eab772cbfa1e93a9"
   },
   "files": {
     "levels.json": "sha256:bcd117ae2b1a83838d829394716f1ff35dcdb66e0500405379f7bbf1945bf6b4",
@@ -32,7 +32,7 @@
     "crypto/attestations/envelopes/release-schema-invalid.dsse.json": "sha256:0846f091f0e341f06865f95afef433e8b65718683c87ac1e5ae2092f2a4da0e2",
     "crypto/attestations/envelopes/release-sig-invalid.dsse.json": "sha256:0551433341a1405bf53d946833ea676b651e259bf93eb852ab90c0e06a852739",
     "crypto/attestations/envelopes/release-unknown-signer.dsse.json": "sha256:4a5c7613d7c4ec4962f66ba3246d6a61cf02b1d095d866c3fe72988a39d05be6",
-    "schemas/release-v0.1.json": "sha256:d86587028e8efcff1621bd08a31323be3d4cdbdd8a41a03a00cbe4ee268944f6",
+    "schemas/release-v0.1.json": "sha256:66dac04b46b9efe4c6bb6d261d042bc0885c2b6db83d89b3b5d903e5243f2176",
     "schemas/review-v0.1.json": "sha256:c0f5a18f2d26d8f9f112aa2867eeb3a03f3ae0ef677c28cc6a6c00db9af026a0"
   }
 }

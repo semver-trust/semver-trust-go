@@ -184,32 +184,38 @@ func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 		}
 		signerClass := identityClass(pol, vs.Principal)
 
-		reviewFacts, reviewNote, err := resolveReview(store, attVerifier, c.Hash, vs.Principal, at)
+		review, err := resolveReview(store, attVerifier, c.Hash, vs.Principal, at)
 		if err != nil {
 			return nil, abort(stepAttestation, err)
 		}
 
-		authorship, review, level := trust.Classify(trust.CommitFacts{
+		authorship, reviewClass, level := trust.Classify(trust.CommitFacts{
 			Signer:           signerClass,
 			Provenance:       c.Trailers.Provenance(),
 			TrailersRequired: pol.TrailersRequired,
-			Review:           reviewFacts,
+			Review:           review.facts,
 		})
 
-		tcommits = append(tcommits, trust.Commit{ID: c.Hash, Level: level, Paths: c.Paths})
-		report.Commits = append(report.Commits, CommitReport{
+		row := CommitReport{
 			SHA:         c.Hash,
 			Short:       shortSHA(c.Hash),
 			Level:       level.String(),
 			Authorship:  authorship.String(),
-			Review:      review.String(),
+			Review:      reviewClass.String(),
 			Signer:      vs.Principal,
 			Fingerprint: vs.Fingerprint,
 			Provenance:  c.Trailers.Provenance(),
+			Trailers:    trailersMap(c.Trailers),
 			Merge:       c.Merge,
 			Paths:       c.Paths,
-			ReviewNote:  reviewNote,
-		})
+			ReviewNote:  review.note,
+		}
+		if review.facts != nil {
+			row.ReviewIdentity = review.facts.ReviewerIdentity
+			row.ReviewAttestation = review.ref
+		}
+		tcommits = append(tcommits, trust.Commit{ID: c.Hash, Level: level, Paths: c.Paths})
+		report.Commits = append(report.Commits, row)
 	}
 
 	// ---- §10 step 4: derivation proofs (re-level verified outputs). --------
@@ -362,6 +368,22 @@ func identityClass(pol *policy.Policy, principal string) trust.IdentityClass {
 		}
 	}
 	return trust.IdentityHuman
+}
+
+// trailersMap flattens a commit's trailer block into the map shape the §8.1
+// provenance vector carries. Trailers are advisory (§4.1); on a duplicated
+// key the first value wins, matching Trailers.Get.
+func trailersMap(ts vcs.Trailers) map[string]string {
+	if len(ts) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(ts))
+	for _, t := range ts {
+		if _, ok := m[t.Key]; !ok {
+			m[t.Key] = t.Value
+		}
+	}
+	return m
 }
 
 func shortSHA(sha string) string {

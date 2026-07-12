@@ -48,6 +48,10 @@
               "description": "The release target commit (tag or SHA).",
               "type": "string",
               "minLength": 1
+            },
+            "from_is_adoption_boundary": {
+              "description": "True when 'from' is the policy-pinned adoption boundary (ADR-024) rather than a previously verified release tag: the range is verified since the boundary, not since inception, and the two claims must never be conflated. Optional, additive within v0.1.",
+              "type": "boolean"
             }
           }
         },

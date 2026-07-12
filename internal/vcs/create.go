@@ -19,7 +19,8 @@ import (
 // packages take an injected clock so tagging is deterministic and testable
 // (ADR-018, plan §6). The tagger identity is passed in rather than read from
 // git config, so the operation needs no ambient environment. path is resolved
-// the same way as Tags (see rootPath). Signing is out of scope (GO-042).
+// the same way as Tags (see rootPath). For the signed release tag §10 step 9
+// requires, see CreateSignedTag (sign.go).
 func CreateTag(path, name string, target plumbing.Hash, taggerName, taggerEmail, message string, when time.Time) error {
 	apath, err := rootPath(path)
 	if err != nil {
