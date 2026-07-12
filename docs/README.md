@@ -12,7 +12,8 @@ plain language.
 | You contribute code to a repository that uses SemVer-Trust | [guides/contributor.md](guides/contributor.md) |
 | You are a coding agent authoring commits in such a repository | [guides/agent.md](guides/agent.md) |
 | You're starting a new GitHub repository under the scheme | [guides/bootstrap-github.md](guides/bootstrap-github.md) |
-| *Remaining guides land as they merge — legacy adoption, GitLab.* | |
+| You're adopting the scheme on an existing GitHub repository | [guides/adopt-legacy-github.md](guides/adopt-legacy-github.md) |
+| *The GitLab guide lands with the final PR of this docs set.* | |
 
 ## Reference
 

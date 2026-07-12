@@ -37,7 +37,8 @@ adoption_boundary = "v0.9.4"   # optional — legacy adoption only (ADR-026)
 - **`adoption_boundary`** — a commit (SHA or tag) before which history is
   exempt from verification. **Greenfield repositories never need this**; it
   exists for legacy adoption where early history is genuinely unverifiable
-  (see the legacy-adoption guide, forthcoming in this docs set). Three
+  (see
+  [adopting on an existing repository](../guides/adopt-legacy-github.md)). Three
   properties bind it (spec repository ADR-026): it is *policy-pinned* — there
   is deliberately no CLI flag, because whoever runs the verifier must not be
   able to move the boundary; it is *disclosed* — every report and release

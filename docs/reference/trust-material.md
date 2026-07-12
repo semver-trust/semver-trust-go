@@ -88,8 +88,8 @@ never need it. Two situations do:
   signed by GitHub's own *web-flow* key, published at
   <https://github.com/web-flow.gpg>. Enrolling it makes that history
   verifiable; pairing it with `bot_accounts = ["noreply@github.com"]` in the
-  policy keeps those merges honestly machine-class (see the
-  legacy-adoption guide, forthcoming in this docs set).
+  policy keeps those merges honestly machine-class (see
+  [adopting on an existing repository](../guides/adopt-legacy-github.md)).
 
 A key's identity, for classification purposes, is the email in its primary
 user ID. There is no partial credit here: a signature by a key that is in no
