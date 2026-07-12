@@ -137,6 +137,11 @@ tasks:
         fi
         go tool -modfile={{.TOOL_MODFILE}} govulncheck ./...
 
+  docs:cli:
+    desc: Regenerate the Markdown CLI reference under docs/cli from the command tree
+    cmds:
+      - go run ./cmd/semver-trust docs --dir docs/cli
+
   mod:
     desc: Download and tidy Go modules (root and tools)
     cmds:
