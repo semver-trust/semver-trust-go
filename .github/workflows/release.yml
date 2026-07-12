@@ -125,10 +125,22 @@ jobs:
       - name: Install syft (SBOM generation)
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
 
+      - name: Stage GoReleaser config (pre-config tags lack .goreleaser.yaml)
+        run: |
+          set -euo pipefail
+          # Prefer the tag's own config; fall back to main's for tags cut
+          # before the config existed. Staging outside the worktree keeps
+          # git state clean for goreleaser.
+          if git cat-file -e HEAD:.goreleaser.yaml 2>/dev/null; then
+            git show HEAD:.goreleaser.yaml >"${RUNNER_TEMP}/goreleaser.yaml"
+          else
+            git show origin/main:.goreleaser.yaml >"${RUNNER_TEMP}/goreleaser.yaml"
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
         with:
-          args: release --clean
+          args: release --clean --config ${{ runner.temp }}/goreleaser.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
