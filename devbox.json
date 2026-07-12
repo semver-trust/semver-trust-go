@@ -17,19 +17,20 @@
     "python@3.14.4",
     "go@1.26.4",
     "goreleaser@latest",
-    "syft@latest"
+    "syft@latest",
+    "cosign@latest"
   ],
   "env": {
-    "VENV_DIR":           "$PWD/.venv"
+    "VENV_DIR": "$PWD/.venv"
   },
   "shell": {
     "init_hook": [
       "echo 'Welcome to devbox!' > /dev/null"
     ],
     "scripts": {
-      "uv-sync":  "uv sync --group dev --no-install-project",
-      "lint":     "uv run ruff check .",
-      "format":   "uv run ruff format ."
+      "uv-sync": "uv sync --group dev --no-install-project",
+      "lint":    "uv run ruff check .",
+      "format":  "uv run ruff format ."
     }
   }
 }
