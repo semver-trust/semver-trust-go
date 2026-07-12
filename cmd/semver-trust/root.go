@@ -49,6 +49,7 @@ latest, next, and tag (GO-041).`,
 	root.AddCommand(newLatestCmd())
 	root.AddCommand(newNextCmd())
 	root.AddCommand(newTagCmd())
+	root.AddCommand(newDocsCmd())
 	return root
 }
 

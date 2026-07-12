@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # First trust-tagged release — the GO-061 ceremony
 
+> **Historical record of the first release.** The living, repeatable process is
+> [release-runbook.md](release-runbook.md); this document is kept as the record
+> of how `v0.1.0` was cut.
+
 This runbook cuts the repository's first release with the tooling it built
 (implementation plan GO-061, the overall exit criterion): a release whose
 decision an outsider can reproduce from public material alone. Steps marked
