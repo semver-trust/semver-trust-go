@@ -309,6 +309,54 @@
         }
       }
     },
+    "goreleaser@latest": {
+      "last_modified": "2026-06-27T07:37:20Z",
+      "resolved": "github:NixOS/nixpkgs/3d46470bb3030020f7e1361f33514854f5bfa86d#goreleaser",
+      "source": "devbox-search",
+      "version": "2.16.0",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/q5lp6f6xlxlqhb6r1y0px1jrbpxnwvjj-goreleaser-2.16.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/q5lp6f6xlxlqhb6r1y0px1jrbpxnwvjj-goreleaser-2.16.0"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/vmf03am0fy2fis2h17vrgm6lwaxl4y5m-goreleaser-2.16.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/vmf03am0fy2fis2h17vrgm6lwaxl4y5m-goreleaser-2.16.0"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/dwfgkx0ifzzfzxkdgavqdavizzn72afx-goreleaser-2.16.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/dwfgkx0ifzzfzxkdgavqdavizzn72afx-goreleaser-2.16.0"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/psmqz670rg8rm4hqkfrf4s0k7f9364p5-goreleaser-2.16.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/psmqz670rg8rm4hqkfrf4s0k7f9364p5-goreleaser-2.16.0"
+        }
+      }
+    },
     "jq@latest": {
       "last_modified": "2026-06-29T19:19:24Z",
       "resolved": "github:NixOS/nixpkgs/7a1a64774a5fd0b0cd39ac95d0e170ace8b266a0#jq",
@@ -727,6 +775,54 @@
             }
           ],
           "store_path": "/nix/store/2pk011vmyhh7hmc5cqgm7ixirckh48ml-shfmt-3.13.1"
+        }
+      }
+    },
+    "syft@latest": {
+      "last_modified": "2026-06-28T08:48:41Z",
+      "resolved": "github:NixOS/nixpkgs/e1c1b84752fb0897897380a3cae9dc7fcab91ca3#syft",
+      "source": "devbox-search",
+      "version": "1.46.0",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/79janmy51agw5wvp2b4wiq4ag4kdhx1a-syft-1.46.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/79janmy51agw5wvp2b4wiq4ag4kdhx1a-syft-1.46.0"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/ycizbd3basskdap35i9r5rdcmzkrqd4n-syft-1.46.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/ycizbd3basskdap35i9r5rdcmzkrqd4n-syft-1.46.0"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/gddczyywwl47ni4b1mysniqdfpfgvy41-syft-1.46.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/gddczyywwl47ni4b1mysniqdfpfgvy41-syft-1.46.0"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/hgixi1h0k40xa4wvp5bfqn9a0yd16fvm-syft-1.46.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/hgixi1h0k40xa4wvp5bfqn9a0yd16fvm-syft-1.46.0"
         }
       }
     },

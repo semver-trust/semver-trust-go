@@ -15,7 +15,9 @@
     "actionlint@latest",
     "uv@0.11.19",
     "python@3.14.4",
-    "go@1.26.4"
+    "go@1.26.4",
+    "goreleaser@latest",
+    "syft@latest"
   ],
   "env": {
     "VENV_DIR":           "$PWD/.venv"
