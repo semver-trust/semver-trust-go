@@ -9,7 +9,7 @@ real. You'll need git, `ssh-keygen`, and the `semver-trust` binary
 
 Greenfield is the easy case, and it's worth savoring why: **your history is
 verifiable from commit #1**, so the adoption-boundary machinery that legacy
-repositories reach for (the legacy-adoption guide, forthcoming in this docs set)
+repositories reach for ([adopting on an existing repository](adopt-legacy-github.md))
 never applies to you, and if you never merge through GitHub's web UI you never
 need GitHub's web-flow key in your keyring at all.
 

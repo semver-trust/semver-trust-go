@@ -92,7 +92,7 @@ Error: §10 step 3 (verify signature): verify 5348847...: OpenPGP: signing key i
 
 A commit is signed by a key that is in no registry at the range tip. Enroll
 the key ([trust material](trust-material.md)) — or, in legacy adoption, this
-is the key-archaeology loop of legacy adoption telling you
+is the [key-archaeology loop](../guides/adopt-legacy-github.md#2-key-archaeology) telling you
 which key to hunt next.
 
 ```text
