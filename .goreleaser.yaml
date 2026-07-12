@@ -1,0 +1,102 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+#
+# GoReleaser v2 configuration for semver-trust.
+#
+# Version stamping: no ldflags injection. `--version` derives from
+# debug.ReadBuildInfo().Main.Version, which Go >=1.24 stamps from the VCS tag on
+# a clean tagged checkout (this repo is Go 1.26). Snapshot builds carry the
+# `{{ .Tag }}-next` template below. See docs/release-runbook.md for the release
+# cadence and cmd/semver-trust/root.go for the version surface.
+version: 2
+
+project_name: semver-trust
+
+builds:
+  - id: semver-trust
+    main: ./cmd/semver-trust
+    binary: semver-trust
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: semver-trust
+    ids:
+      - semver-trust
+    formats:
+      - tar.gz
+    # Windows builds ship as .zip, the conventional format on that platform.
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - id: archive-sbom
+    artifacts: archive
+
+# Keyless cosign signing over the checksums file (id-token: write in CI). This
+# is the standard minimal pattern: the signed checksums file transitively
+# covers every archive listed inside it.
+signs:
+  - id: cosign-checksum
+    cmd: cosign
+    args:
+      - sign-blob
+      - --yes
+      - --output-certificate=${certificate}
+      - --output-signature=${signature}
+      - ${artifact}
+    artifacts: checksum
+    certificate: "${artifact}.pem"
+    signature: "${artifact}.sig"
+
+changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: CI
+      regexp: '^.*?ci(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - '^merge:'
+      - '^Merge '
+
+release:
+  github:
+    owner: semver-trust
+    name: semver-trust-go
+  draft: false
+
+snapshot:
+  version_template: "{{ .Tag }}-next"

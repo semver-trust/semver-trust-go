@@ -169,3 +169,13 @@ tasks:
     desc: Remove build artifacts
     cmds:
       - rm -rf bin dist
+
+  release:check:
+    desc: Validate the GoReleaser configuration
+    cmds:
+      - goreleaser check
+
+  release:snapshot:
+    desc: Build a local snapshot release (no publish/sign/sbom) into dist/
+    cmds:
+      - goreleaser release --clean --snapshot --skip=sign,publish,sbom
