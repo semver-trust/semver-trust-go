@@ -49,6 +49,54 @@
         }
       }
     },
+    "cosign@latest": {
+      "last_modified": "2026-06-27T07:37:20Z",
+      "resolved": "github:NixOS/nixpkgs/3d46470bb3030020f7e1361f33514854f5bfa86d#cosign",
+      "source": "devbox-search",
+      "version": "3.1.1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/qlz96y3kzna8gwp9vfk1i94vhiczl6hp-cosign-3.1.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/qlz96y3kzna8gwp9vfk1i94vhiczl6hp-cosign-3.1.1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/gmk9i7jcjr7zbiy2cnhv2mcdphi18sz4-cosign-3.1.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/gmk9i7jcjr7zbiy2cnhv2mcdphi18sz4-cosign-3.1.1"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/3jkhjc2acixbai99gj115gvqvimj08xd-cosign-3.1.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/3jkhjc2acixbai99gj115gvqvimj08xd-cosign-3.1.1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/xkkcfrfngp0mhscwzim3if2rlyxqzh8w-cosign-3.1.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/xkkcfrfngp0mhscwzim3if2rlyxqzh8w-cosign-3.1.1"
+        }
+      }
+    },
     "gh@latest": {
       "last_modified": "2026-06-27T07:37:20Z",
       "resolved": "github:NixOS/nixpkgs/3d46470bb3030020f7e1361f33514854f5bfa86d#gh",
