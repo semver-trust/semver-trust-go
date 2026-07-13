@@ -16,26 +16,35 @@ package trust
 // map is tracked in semver-trust-go#76.
 type ReviewQualification struct {
 	ReviewerClass IdentityClass
-	// ReviewerActor and AuthorActor are canonical actor identities (§4.2, §9).
-	ReviewerActor string
-	AuthorActor   string
+	// ReviewerActor and AuthorActor are canonical actor identities (§4.2, §9);
+	// CredentialActor is the actor the signing credential maps to and MUST
+	// equal ReviewerActor (an asserted reviewer cannot borrow a credential
+	// mapping to a different actor).
+	ReviewerActor   string
+	AuthorActor     string
+	CredentialActor string
 
 	Verdict          string // approved | changes_requested | commented
 	ApprovalState    string // active | stale | withdrawn | dismissed
 	EffectiveAtMerge bool
 
-	// Coverage is "final_revision" or "final_diff"; the latter binds a
-	// squash/rebase pre-rewrite diff (ApprovedDiff) to the result (ResultDiff).
+	// Coverage is "final_revision" or "final_diff". final_diff is only valid for
+	// a captured squash/rebase flow (MergeStrategy squash|rebase, CaptureMode
+	// pre_rewrite) and binds ApprovedDiff to ResultDiff.
 	Coverage         string
 	ApprovedRevision string
 	FinalRevision    string
 	ApprovedDiff     string
 	ResultDiff       string
+	MergeStrategy    string
+	CaptureMode      string
 
 	// SeparateContext reports separate agent execution state (§3.3 condition 1);
 	// only consulted for agent review.
 	SeparateContext bool
-	// PostApprovalChange reports a source/target/merge change after approval.
+	// PostApprovalChange reports a source/target/merge change after approval;
+	// any such change disqualifies (a captured squash/rebase carries no
+	// post-approval change — its content is bound by the final diff instead).
 	PostApprovalChange bool
 	SignedAttestation  bool
 }
@@ -45,38 +54,45 @@ type ReviewQualification struct {
 // not qualify, a stable reason. A non-qualifying review contributes ReviewNone;
 // the commit still classifies from its authorship (a human author alone is T2).
 func QualifyReview(author Authorship, q ReviewQualification) (Review, string) {
-	if !q.SignedAttestation {
-		return ReviewNone, "unsigned_attestation"
-	}
 	if q.Verdict != "approved" {
 		return ReviewNone, "verdict_not_approved"
 	}
 	if q.ApprovalState != "active" || !q.EffectiveAtMerge {
 		return ReviewNone, "approval_not_active"
 	}
-
-	// The approval must bind the content that merged: the final revision, or —
-	// for a captured squash/rebase — the final diff.
-	diffBound := q.Coverage == "final_diff" && q.ApprovedDiff != "" && q.ApprovedDiff == q.ResultDiff
-	if q.Coverage == "final_diff" {
-		if !diffBound {
-			return ReviewNone, "revision_mismatch"
-		}
-	} else if q.ApprovedRevision != q.FinalRevision {
-		return ReviewNone, "revision_mismatch"
+	if !q.SignedAttestation {
+		return ReviewNone, "unsigned_attestation"
+	}
+	if q.CredentialActor != q.ReviewerActor {
+		return ReviewNone, "credential_actor_mismatch"
+	}
+	if q.PostApprovalChange {
+		return ReviewNone, "post_approval_change"
 	}
 
-	// A post-approval change disqualifies unless the approved diff was captured
-	// and equals the result (§4.3.5 squash/rebase capture).
-	if q.PostApprovalChange && !diffBound {
-		return ReviewNone, "post_approval_change"
+	// The approval must bind the content that merged: the final revision, or —
+	// only for a captured squash/rebase flow — the final diff.
+	switch q.Coverage {
+	case "final_revision":
+		if q.ApprovedRevision != q.FinalRevision {
+			return ReviewNone, "revision_mismatch"
+		}
+	case "final_diff":
+		if (q.MergeStrategy != "squash" && q.MergeStrategy != "rebase") || q.CaptureMode != "pre_rewrite" {
+			return ReviewNone, "unsupported_final_diff_flow"
+		}
+		if q.ApprovedDiff != q.ResultDiff {
+			return ReviewNone, "diff_mismatch"
+		}
+	default:
+		return ReviewNone, "unknown_coverage"
 	}
 
 	switch q.ReviewerClass {
 	case IdentityAgent:
 		// Agent review qualifies for T1 only from a distinct canonical actor in
 		// a separate execution context (§3.3).
-		if !q.SeparateContext || q.ReviewerActor == q.AuthorActor {
+		if q.ReviewerActor == q.AuthorActor || !q.SeparateContext {
 			return ReviewNone, "agent_not_independent"
 		}
 		return ReviewAgentIndependent, ""
