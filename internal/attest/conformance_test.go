@@ -68,8 +68,10 @@ func newConformanceVerifier(t *testing.T, attDir string) *Verifier {
 	}
 	schemas := map[string][]byte{}
 	for predicateType, file := range map[string]string{
-		PredicateRelease: "release-v0.1.json",
-		PredicateReview:  "review-v0.1.json",
+		PredicateRelease:    "release-v0.1.json",
+		PredicateReview:     "review-v0.1.json",
+		PredicateReleaseV02: "release-v0.2.json",
+		PredicateReviewV02:  "review-v0.2.json",
 	} {
 		data, err := os.ReadFile(filepath.Join(vendorDir(t), "schemas", file))
 		if err != nil {

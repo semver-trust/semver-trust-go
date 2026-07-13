@@ -45,9 +45,10 @@ plain language.
 ## Normative sources
 
 - The [SemVer-Trust specification](https://github.com/semver-trust/spec)
-  (draft v0.3) — the normative text; these docs never override it.
+  (draft v0.10) — the normative text; these docs never override it.
 - The [ADR index](https://github.com/semver-trust/spec/tree/main/docs/adr) —
   every design decision, with rationale and rejected alternatives.
 - Conformance: this implementation vendors the spec's vector suite
   digest-pinned under [`conformance/`](../conformance/); the pinned spec
-  version is in `conformance/manifest.json`.
+  version is in `conformance/manifest.json`. Which suites are enforced vs.
+  pending is in [conformance-coverage.md](conformance-coverage.md).

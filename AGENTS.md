@@ -29,7 +29,7 @@ adds this repository's rules and wins where stricter.
    fixture is a clearly-labeled test double that cannot escape the test
    tree.
 3. **Pin the spec version** this code targets in one place —
-   `conformance/manifest.json` (currently draft v0.3); conformance is
+   `conformance/manifest.json` (currently draft v0.10); conformance is
    always claimed against a stated version.
 
 ## Provenance discipline (this repo dogfoods the scheme)

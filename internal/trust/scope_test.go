@@ -105,52 +105,14 @@ func TestScopeFloors(t *testing.T) {
 			want: map[string]Level{"auth": T0},
 		},
 		{
-			name:   "verified derivation outputs inherit the inputs' floor",
+			// ADR-033: derivation claims are non-authoritative. A generated
+			// output commit floors at its own level even when a higher-trust
+			// commit touched the generator's inputs — no re-leveling.
+			name:   "generated outputs floor at the commit's own level",
 			scopes: testScopes,
 			commits: []Commit{
 				{ID: "c1", Level: T3, Paths: []string{"services/auth/api/openapi.yaml"}},
-				{
-					ID: "c2", Level: T0,
-					Paths: []string{"services/auth/internal/gen/server.go"},
-					Derivation: &DerivationFacts{
-						Outputs:        []string{"services/auth/internal/gen/**"},
-						Verified:       true,
-						InheritedLevel: T3,
-					},
-				},
-			},
-			want: map[string]Level{"auth": T3},
-		},
-		{
-			name:   "failed derivation proof is void",
-			scopes: testScopes,
-			commits: []Commit{
-				{ID: "c1", Level: T3, Paths: []string{"services/auth/api/openapi.yaml"}},
-				{
-					ID: "c2", Level: T0,
-					Paths: []string{"services/auth/internal/gen/server.go"},
-					Derivation: &DerivationFacts{
-						Outputs:        []string{"services/auth/internal/gen/**"},
-						Verified:       false,
-						InheritedLevel: T3,
-					},
-				},
-			},
-			want: map[string]Level{"auth": T0},
-		},
-		{
-			name:   "path smuggled alongside derivation outputs keeps the raw level",
-			scopes: testScopes,
-			commits: []Commit{
-				{
-					ID: "c1", Level: T0,
-					Paths: []string{"services/auth/internal/gen/server.go", "services/auth/middleware.go"},
-					Derivation: &DerivationFacts{
-						Outputs:        []string{"services/auth/internal/gen/**"},
-						Verified:       true,
-						InheritedLevel: T3,
-					},
-				},
+				{ID: "c2", Level: T0, Paths: []string{"services/auth/internal/gen/server.go"}},
 			},
 			want: map[string]Level{"auth": T0},
 		},
