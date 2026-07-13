@@ -363,10 +363,9 @@ func releaseStatementInput(report *verify.Report, comp verify.ComponentEffective
 
 	commits := make([]attest.ReleaseCommit, 0, len(report.Commits))
 	for _, c := range report.Commits {
+		// Derivation claims are non-authoritative and never re-level (ADR-033);
+		// the optional per-commit derivations field is no longer populated.
 		var derivations []string
-		if c.Derivation != "" {
-			derivations = []string{c.Derivation}
-		}
 		commits = append(commits, attest.ReleaseCommit{
 			SHA:               c.SHA,
 			Level:             c.Level,

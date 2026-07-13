@@ -77,25 +77,16 @@ func (r *Report) WriteText(w io.Writer) error {
 		if c.ReviewNote != "" {
 			e.printf("  note %s: %s\n", c.Short, c.ReviewNote)
 		}
-		if c.Derivation != "" {
-			e.printf("  note %s: outputs re-leveled by derivation %q (§4.4)\n", c.Short, c.Derivation)
-		}
+
 	}
 
-	// §10 step 4 — derivation proofs.
-	e.println("\n[§10 step 4] derivation proofs")
+	// §10 step 4 — derivation claims (non-authoritative, ADR-033).
+	e.println("\n[§10 step 4] derivation claims")
 	if len(r.Derivations) == 0 {
 		e.println("  none declared")
 	}
 	for _, d := range r.Derivations {
-		switch {
-		case d.Verified && d.InheritedLevel != "":
-			e.printf("  %s: verified — outputs inherit %s\n", d.Rule, d.InheritedLevel)
-		case d.Verified:
-			e.printf("  %s: verified — %s\n", d.Rule, d.Note)
-		default:
-			e.printf("  %s: VOID (outputs keep own provenance) — differs: %s\n", d.Rule, strings.Join(d.Diffs, ", "))
-		}
+		e.printf("  %s: %s\n", d.Rule, d.Note)
 	}
 
 	// §10 step 5 — own trust per scope.

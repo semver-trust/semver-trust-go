@@ -6,7 +6,7 @@
 // traceable report. It composes the merged building blocks — internal/vcs
 // (range enumeration, signature verification), internal/trust (classification,
 // scopes, propagation), internal/policy (the loaded policy), internal/attest
-// (review attestations), internal/derive (derivation proofs), and the public
+// (review attestations), and the public
 // graph/evidence seams — without reimplementing any of their semantics.
 //
 // This package implements §10 steps 1–7; the decision and emit steps (8–9)
