@@ -23,7 +23,7 @@ while the model is adopted incrementally (tracked in
 | propagation | §5.3 transitive propagation | **enforced** |
 | decision | §6.2–6.4 threshold gate + decision table (ADR-032) | **enforced** |
 | signature | §4.2 / §10 commit-signature verification | **enforced** |
-| attestation | §8.2 DSSE verify + v0.1/v0.2 predicate **schema** validation | **enforced** |
+| attestation | §8.2 DSSE verify (v0.1 in production; v0.1/v0.2 **schema** validation in the conformance harness) | **enforced** |
 | review-qualification | §4.3 qualified review + canonical actors (ADR-031) | pending |
 | range | §5.2 exact release intervals (ADR-027) | pending |
 | policy-transition | §5.4 bootstrap + policy transitions (ADR-028) | pending |
@@ -32,11 +32,14 @@ while the model is adopted incrementally (tracked in
 | publishing-profile | §7.4 ecosystem routing (ADR-034) | pending |
 | predicate-v0.2 | §8.1 release/v0.2 payload validation (ADR-030) | pending |
 
-**What "attestation enforced" covers today:** the DSSE verification path
-verifies signatures against the injected attestation-signer registry and
-validates release/v0.1, review/v0.1, **and** release/v0.2, review/v0.2 envelopes
-against their JSON Schemas at the injected instant. It does not yet consume the
-full v0.4+ release semantics the v0.2 predicate carries (interval, policy-state,
+**What "attestation enforced" covers today:** the `attest.Verifier` is generic —
+it verifies signatures against the injected attestation-signer registry and
+validates each envelope against whichever predicate JSON Schemas it is given.
+The **production** verify path (`internal/verify`) injects only release/v0.1 and
+review/v0.1 schemas. The **conformance harness** additionally injects
+release/v0.2 and review/v0.2, so the two v0.2 successor envelopes are exercised
+at the schema + signature level. Neither path yet consumes the full v0.4+
+release semantics the v0.2 predicate carries (interval, policy-state,
 version-state); that lands with the range / policy-transition / version-ancestry
 suites above.
 
