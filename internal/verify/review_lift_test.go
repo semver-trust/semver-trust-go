@@ -155,6 +155,50 @@ func TestReviewAttestationLiftsLevels(t *testing.T) {
 	}
 }
 
+// TestNonApprovedReviewDoesNotLift is the ADR-031 verdict regression: a
+// signed, enrolled, subject-covering review whose verdict is not "approved"
+// (here changes_requested) MUST NOT raise trust. A comment or a
+// changes-requested review does not establish that the reviewer accepted the
+// merged content (§4.3). Levels stay at their unreviewed values and every
+// affected commit's report names why, so the degradation is visible.
+func TestNonApprovedReviewDoesNotLift(t *testing.T) {
+	fixtures := buildFixtures(t)
+	repo := filepath.Join(fixtures, "release")
+
+	subjects := rangeSHAs(t, repo, "", "main")
+	emission := emitBobReviewWithVerdict(t, subjects, "changes_requested")
+	if _, err := attest.StoreForSubjects(attest.GitRefStore{Path: repo}, subjects, emission.Envelope); err != nil {
+		t.Fatalf("storing envelopes: %v", err)
+	}
+
+	report, err := Verify(Options{
+		RepoPath:               repo,
+		From:                   "v0.1.0",
+		To:                     "main",
+		PolicyPath:             ".semver-trust/policy.toml",
+		AllowedSignersPath:     allowedSignersPath(t),
+		AttestationSignersPath: bobAttestationRegistry(t),
+		VerifyTime:             pinnedEpoch,
+	})
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+
+	bySigner := commitsBySigner(report.Commits)
+	// Unchanged from the unreviewed state: the changes_requested review is
+	// verified and covers every commit, but it does not count.
+	assertCommit(t, bySigner["alice@semver-trust.test"], "T2", "human", "none")
+	assertCommit(t, bySigner["ci-bot@semver-trust.test"], "T0", "agent", "none")
+	if got := report.Scopes[0].OwnFloor; got != "T0" {
+		t.Errorf("own floor = %s, want T0 (a changes_requested review must not lift)", got)
+	}
+	for _, c := range report.Commits {
+		if !strings.Contains(c.ReviewNote, "changes_requested") {
+			t.Errorf("commit %s note = %q, want the non-approved verdict named", c.Short, c.ReviewNote)
+		}
+	}
+}
+
 // A review attestation signed by a key that is NOT enrolled in the given
 // attestation registry aborts the run (§8.2: a stored attestation that fails
 // verification is a fail-closed stop, never a skip).
@@ -186,6 +230,10 @@ func TestStoredReviewByUnenrolledSignerAborts(t *testing.T) {
 // emitBobReview emits bob's §4.3 review attestation over the subject SHAs,
 // signed with the vendored test-only human-bob key at the pinned epoch.
 func emitBobReview(t *testing.T, subjects []string) attest.Emission {
+	return emitBobReviewWithVerdict(t, subjects, "approved")
+}
+
+func emitBobReviewWithVerdict(t *testing.T, subjects []string, verdict string) attest.Emission {
 	t.Helper()
 	keyBytes, err := os.ReadFile(filepath.Join(cryptoVendorDir(t), "keys", "human-bob"))
 	if err != nil {
@@ -206,7 +254,7 @@ func emitBobReview(t *testing.T, subjects []string) attest.Emission {
 	emission, err := emitter.Emit(attest.ReviewInput{
 		Subjects: subjects,
 		Reviewers: []attest.Reviewer{
-			{Identity: "bob@semver-trust.test", Class: "human", Verdict: "approved"},
+			{Identity: "bob@semver-trust.test", Class: "human", Verdict: verdict},
 		},
 		PullRequest:   "https://forge.semver-trust.test/release/pull/3",
 		MergeStrategy: "merge",
