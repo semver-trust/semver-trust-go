@@ -4,6 +4,7 @@ package verify
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/semver-trust/semver-trust-go/internal/attest"
@@ -18,6 +19,7 @@ type reviewPredicate struct {
 		Reviewers []struct {
 			Identity string `json:"identity"`
 			Class    string `json:"class"`
+			Verdict  string `json:"verdict"`
 		} `json:"reviewers"`
 		Independence *struct {
 			SeparateExecutionContext bool `json:"separate_execution_context"`
@@ -64,6 +66,7 @@ func resolveReview(store attest.GitRefStore, v *attest.Verifier, sha, authorIden
 		}, nil
 	}
 
+	var skipNote string
 	for _, env := range envelopes {
 		stmt, err := v.Verify(env, at)
 		if err != nil {
@@ -75,30 +78,48 @@ func resolveReview(store attest.GitRefStore, v *attest.Verifier, sha, authorIden
 		if !subjectCovers(stmt.Subjects, sha) {
 			continue
 		}
-		facts, err := reviewFacts(stmt, authorIdentity)
+		facts, note, err := reviewFacts(stmt, authorIdentity)
 		if err != nil {
 			return reviewResolution{}, err
 		}
 		if facts == nil {
+			// A covering review that does not raise trust (e.g. a
+			// non-approved verdict) records why, so the last such note
+			// surfaces if no qualifying review is found.
+			if note != "" {
+				skipNote = note
+			}
 			continue
 		}
 		return reviewResolution{facts: facts, ref: attest.EnvelopeRef(sha, env)}, nil
 	}
-	return reviewResolution{}, nil
+	return reviewResolution{note: skipNote}, nil
 }
 
 // reviewFacts builds the trust.ReviewFacts from a verified review statement.
 // The first reviewer is authoritative for the scalar classification (§3.2 maps
 // a single review class); a signed, verified attestation sets SignedAttestation.
-func reviewFacts(stmt attest.Statement, authorIdentity string) (*trust.ReviewFacts, error) {
+//
+// Only an approved verdict raises trust (spec repository ADR-031): a comment or
+// a changes-requested review does not establish that the reviewer accepted the
+// merged content, so it classifies as no review. A non-approved covering
+// review returns nil facts plus a note, so the honest degradation is visible
+// rather than silent (and cannot be mistaken for an absent review). Finer
+// qualification — canonical actors, final-revision binding, approval state —
+// arrives with the review/v0.2 predicate (semver-trust-go#76).
+func reviewFacts(stmt attest.Statement, authorIdentity string) (*trust.ReviewFacts, string, error) {
 	var rp reviewPredicate
 	if err := json.Unmarshal(stmt.Payload, &rp); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if len(rp.Predicate.Reviewers) == 0 {
-		return nil, nil
+		return nil, "", nil
 	}
 	reviewer := rp.Predicate.Reviewers[0]
+	if reviewer.Verdict != "approved" {
+		return nil, "review verdict " + strconv.Quote(reviewer.Verdict) +
+			" does not raise trust (only approved counts, §4.3/ADR-031); classified none", nil
+	}
 	class := trust.IdentityHuman
 	if reviewer.Class == "agent" {
 		class = trust.IdentityAgent
@@ -110,7 +131,7 @@ func reviewFacts(stmt attest.Statement, authorIdentity string) (*trust.ReviewFac
 		SignerIdentity:    authorIdentity,
 		SeparateContext:   separate,
 		SignedAttestation: true,
-	}, nil
+	}, "", nil
 }
 
 // subjectCovers reports whether an attestation's subjects bind the commit SHA
