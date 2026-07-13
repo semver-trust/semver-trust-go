@@ -218,17 +218,9 @@ func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 		report.Commits = append(report.Commits, row)
 	}
 
-	// ---- §10 step 4: derivation proofs (re-level verified outputs). --------
-	report.Derivations, err = runDerivations(repo, opts.To, pol.Derivations, tcommits)
-	if err != nil {
-		return nil, err
-	}
-	// Reflect the re-leveling rule name onto each commit's report row.
-	for i := range tcommits {
-		if d := tcommits[i].Derivation; d != nil && d.Verified {
-			report.Commits[i].Derivation = derivationRuleFor(pol.Derivations, d.Outputs)
-		}
-	}
+	// ---- §10 step 4: derivation claims (non-authoritative; never executed,
+	// never re-leveled — ADR-033). -------------------------------------------
+	report.Derivations = reportDerivations(pol.Derivations)
 
 	// ---- §10 step 1 / §5.4: meta-path level check (needs levels, so run ----
 	// after step 3; reported as the step-1/§5.4 abort — see doc.go). ---------

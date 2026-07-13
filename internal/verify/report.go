@@ -30,7 +30,7 @@ type Report struct {
 	Policy      PolicyReport      `json:"policy"`       // §10 step 1
 	MetaPath    MetaPathReport    `json:"meta_path"`    // §10 step 1 / §5.4
 	Commits     []CommitReport    `json:"commits"`      // §10 steps 2–3
-	Derivations []DerivationReport `json:"derivations"` // §10 step 4
+	Derivations []DerivationReport `json:"derivations"` // §10 step 4 (non-authoritative, ADR-033)
 	Scopes      []ScopeReport     `json:"scopes"`       // §10 step 5
 	Propagation PropagationReport `json:"propagation"`  // §10 step 6
 	Evidence    EvidenceReport    `json:"evidence"`     // §10 step 7
@@ -75,8 +75,6 @@ type CommitReport struct {
 	Trailers map[string]string `json:"trailers,omitempty"`
 	Merge    bool              `json:"merge"`
 	Paths    []string          `json:"paths"`
-	// Derivation names the rule re-leveling this commit's outputs, or is empty.
-	Derivation string `json:"derivation,omitempty"`
 	// ReviewIdentity is the verified reviewer identity when a review
 	// attestation was cryptographically consumed for this commit (§4.3).
 	ReviewIdentity string `json:"review_identity,omitempty"`
@@ -89,10 +87,12 @@ type CommitReport struct {
 	ReviewNote string `json:"review_note,omitempty"`
 }
 
-// DerivationReport is one derivation rule's outcome (§10 step 4, §4.4): a
-// verified proof re-levels its outputs to the inputs' floor; a void proof does
-// not abort — the outputs classify by their own provenance and the differing
-// paths are reported here (never silently absorbed).
+// DerivationReport records one policy-declared derivation rule (§10 step 4).
+// Derivation claims are non-authoritative metadata (spec repository ADR-033):
+// the verifier never executes them and they supply no trust elevation, so
+// Verified is always false and the note states why. The retired re-leveling
+// fields keep their JSON names for report-shape compatibility but are never
+// populated.
 type DerivationReport struct {
 	Rule           string   `json:"rule"`
 	Verified       bool     `json:"verified"`

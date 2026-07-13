@@ -72,16 +72,18 @@ never the trust anchor — the signature inside the envelope is — so this pack
 validates signatures and subject digests regardless of where an envelope was
 fetched from.
 
-**`internal/derive`** — the §4.4 derivation-proof runner. It re-runs a policy's
-pinned derivation command against `TO`'s tree and diffs the result byte-for-byte
-against the committed outputs; on a match, the output paths inherit the inputs'
-trust floor. Reproducibility, not identity, is the proof. This is the scheme's
-only sanctioned exception to weakest-link flooring, and it is principled because
-it is *verified*, not declared.
+**Derivation claims** are non-authoritative metadata. The verifier never
+executes policy-declared derivation commands — running a repository's commands
+to level its own outputs both fails to prove derivation (a fixed point is not
+provenance) and hands the verifier host to the repository it verifies. A
+declared rule is recorded in the report and supplies no trust elevation; its
+outputs classify by their commits' own provenance under ordinary weakest-link
+flooring. See spec repository ADR-033 (which retired the executable-proof
+mechanism of ADR-004/ADR-015).
 
 **`internal/verify`** — the §10 pipeline that composes all of the above into the
 verification algorithm: load and self-check the policy, enumerate the range,
-classify each commit, apply derivation proofs, partition by scope and compute
+classify each commit, partition by scope and compute
 own trust, propagate to effective trust, collect evidence, and render the report
 (human table or `--json`). `release` extends the same pipeline through the emit
 steps (create the tag, sign and store the attestation). This is where "fails
@@ -121,7 +123,7 @@ pin: `--version` reads the draft version and source commit from it.
 Verification interfaces accept an injectable clock and injectable trust roots
 from day one (specification
 [ADR-018](https://github.com/semver-trust/spec/blob/main/docs/adr/0018-verification-interfaces-accept-injectable-trust-roots-and-clock-from-day-one.md)).
-No package under `internal/{vcs,trust,attest,derive,sshsig}` may call
+No package under `internal/{vcs,trust,attest,sshsig}` may call
 `time.Now()`; the wall clock is read exactly once in `cmd/` and threaded through
 as a `time.Time`. This is not a stylistic preference — it is what makes the
 scheme reproducible. The maintainer's temporary signing key expires 2026-08-01,

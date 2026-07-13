@@ -61,9 +61,8 @@ func readTreeFile(repoPath, rev, path string) ([]byte, error) {
 }
 
 // exportTree materializes a revision's tree into destDir: the disposable
-// checkout the derivation runner and graph adapter consume (never the live
-// working tree — derive.Run mutates the tree it runs in, §4.4). File modes are
-// preserved so an executable generator survives the round trip.
+// checkout the graph adapter and compatibility differ consume (never the live
+// working tree). File modes are preserved so the export is faithful.
 func exportTree(repoPath, rev, destDir string) error {
 	r, err := openRepo(repoPath)
 	if err != nil {

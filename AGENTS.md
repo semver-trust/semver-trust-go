@@ -51,7 +51,7 @@ adds this repository's rules and wins where stricter.
   `policy`, the plain-mode `list`/`latest`/`next`/`tag`).
 - `internal/` — everything not part of the public plugin API:
   `version`/`plain` (parsers + plain mode), `vcs`, `sshsig`/`pgp` (signing
-  key families), `trust`, `policy`, `attest`, `derive`, and `verify` (the
+  key families), `trust`, `policy`, `attest`, and `verify` (the
   §10 pipeline).
 - Public packages only for the ADR-011 seams: `evidence/` (compatibility
   providers) and `graph/` (workspace graph adapters), plus registry
