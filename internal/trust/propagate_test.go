@@ -142,9 +142,9 @@ func TestPropagateUnknownNode(t *testing.T) {
 }
 
 // TestAppendixAEndToEnd chains the aggregation pipeline over the spec's
-// Appendix A worked example: per-scope floors (steps 1-2, incl. the §4.4
-// derivation inheritance) feed propagation (pre- and post-promotion), and
-// the meta-path rule fails billing's step-5 range outright.
+// Appendix A worked example: per-scope floors (steps 1-2) feed propagation
+// (pre- and post-promotion), and the meta-path rule fails billing's step-5
+// range outright.
 func TestAppendixAEndToEnd(t *testing.T) {
 	scopes := map[string]string{
 		"services/auth/**":    "auth",
@@ -158,23 +158,13 @@ func TestAppendixAEndToEnd(t *testing.T) {
 		{ID: "c2", Level: T0, Paths: []string{"pkg/common/retry_test.go"}},
 		{ID: "c3", Level: T0, Paths: []string{"pkg/common/backoff.go"}},
 	}
-	// Step 2: five human-reviewed commits on services/auth plus verified
-	// regeneration inheriting the reviewed spec commits' T3.
+	// Step 2: five human-reviewed commits on services/auth, all T3.
 	authRange := []Commit{
 		{ID: "a1", Level: T3, Paths: []string{"services/auth/api/openapi.yaml"}},
 		{ID: "a2", Level: T3, Paths: []string{"services/auth/handler.go"}},
 		{ID: "a3", Level: T3, Paths: []string{"services/auth/session.go"}},
 		{ID: "a4", Level: T3, Paths: []string{"services/auth/token.go"}},
 		{ID: "a5", Level: T3, Paths: []string{"services/auth/token_test.go"}},
-		{
-			ID: "a6", Level: T0,
-			Paths: []string{"services/auth/internal/gen/server.go"},
-			Derivation: &DerivationFacts{
-				Outputs:        []string{"services/auth/internal/gen/**"},
-				Verified:       true,
-				InheritedLevel: T3,
-			},
-		},
 	}
 
 	commonFloors, err := ScopeFloors(scopes, commonRange)

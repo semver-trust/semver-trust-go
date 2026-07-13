@@ -44,10 +44,15 @@ const PayloadType = "application/vnd.in-toto+json"
 // StatementType is the in-toto Statement v1 type URI (spec §8).
 const StatementType = "https://in-toto.io/Statement/v1"
 
-// The frozen predicate-type URIs (spec §4.3, §8.1; ADR-013).
+// The frozen predicate-type URIs (spec §4.3, §8.1; ADR-013). The v0.1 URIs are
+// what this implementation emits and verifies end-to-end. The v0.2 successor
+// URIs (ADR-030) are recognized for envelope-level schema validation — the
+// full v0.4+ release semantics they carry are tracked in semver-trust-go#76.
 const (
-	PredicateRelease = "https://semver-trust.dev/release/v0.1"
-	PredicateReview  = "https://semver-trust.dev/review/v0.1"
+	PredicateRelease    = "https://semver-trust.dev/release/v0.1"
+	PredicateReview     = "https://semver-trust.dev/review/v0.1"
+	PredicateReleaseV02 = "https://semver-trust.dev/release/v0.2"
+	PredicateReviewV02  = "https://semver-trust.dev/review/v0.2"
 )
 
 // Verification failure classes. Every one is an abort (§5.2, §8.2).

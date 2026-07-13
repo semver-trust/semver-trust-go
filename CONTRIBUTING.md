@@ -1,7 +1,7 @@
 # Contributing
 
 semver-trust-go is the official Go reference implementation of SemVer-Trust,
-tracking specification **draft v0.3**. Feedback and design discussion are
+tracking specification **draft v0.10**. Feedback and design discussion are
 welcome as issues.
 
 Pull requests: contribution terms (CLA or DCO) are being finalized and will be

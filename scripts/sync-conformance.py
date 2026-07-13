@@ -57,9 +57,15 @@ FILES = (
     "crypto/attestations/envelopes/release-schema-invalid.dsse.json",
     "crypto/attestations/envelopes/release-sig-invalid.dsse.json",
     "crypto/attestations/envelopes/release-unknown-signer.dsse.json",
+    # v0.2 successor-predicate positive envelopes (ADR-030): the attestation
+    # vectors reference these from draft v0.6 onward.
+    "crypto/attestations/envelopes/release-v02-valid.dsse.json",
+    "crypto/attestations/envelopes/review-v02-valid.dsse.json",
     # Predicate JSON Schemas (GO-010; live under schemas/, not conformance/).
     "schemas/release-v0.1.json",
     "schemas/review-v0.1.json",
+    "schemas/release-v0.2.json",
+    "schemas/review-v0.2.json",
 )
 
 ROOT = Path(__file__).resolve().parent.parent

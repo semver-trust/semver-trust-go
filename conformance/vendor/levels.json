@@ -1,6 +1,6 @@
 {
   "$comment": "SPDX-License-Identifier: Apache-2.0",
-  "spec_version": "0.3",
+  "spec_version": "0.10",
   "description": "Per-commit trust level assignment vectors for SemVer-Trust (spec/semver-trust.md §3.2, §3.3, §4.1-§4.2, Appendix B). 'matrix' vectors carry already-classified authorship/review classes and assert the resulting level; 'classify' vectors carry raw commit facts and assert both the derived classes and the level.",
   "vectors": [
     {

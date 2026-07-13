@@ -1,7 +1,7 @@
 {
   "$comment": "SPDX-License-Identifier: Apache-2.0",
-  "spec_version": "0.3",
-  "description": "Aggregation vectors for SemVer-Trust (spec/semver-trust.md §5.1, §5.2, §5.4, with §4.4 derivation re-leveling as it feeds §5.2). 'scope_partition' vectors map commit diff paths through a policy scope-glob map and assert which commits touch which scopes; 'scope_floor' vectors additionally carry per-commit levels and assert the per-scope own-trust floor; 'meta_path' vectors assert the §5.4 hard-fail rule for under-leveled commits touching meta-paths. Globs use gitignore-style segments: '*' matches within a path segment, '**' matches across segments.",
+  "spec_version": "0.10",
+  "description": "Aggregation vectors for SemVer-Trust (spec/semver-trust.md §5.1, §5.2, §5.4, with §4.4 derivation claims ignored for portable re-leveling). 'scope_partition' vectors map commit diff paths through a policy scope-glob map and assert which commits touch which scopes; 'scope_floor' vectors additionally carry per-commit levels and assert the per-scope own-trust floor; 'meta_path' vectors assert the §5.4 hard-fail rule for under-leveled commits touching meta-paths. Globs use gitignore-style segments: '*' matches within a path segment, '**' matches across segments.",
   "vectors": [
     {
       "id": "aggregation/partition/single-scope",
@@ -156,9 +156,9 @@
       }
     },
     {
-      "id": "aggregation/floor/appendix-a-step-2-derivation",
+      "id": "aggregation/floor/appendix-a-step-2-generated-output",
       "kind": "scope_floor",
-      "description": "Appendix A step 2: five human-authored, human-reviewed commits plus regenerated internal/gen/** whose verified derivation proof inherits the reviewed spec commits' T3 — own(auth) = T3. The inherited level is the §4.4 inputs' floor, computed upstream of aggregation and carried here as data.",
+      "description": "Appendix A step 2: regenerated internal/gen/** committed at T0 stays T0 in the portable baseline even when local derivation metadata claims T3 inputs.",
       "spec": "Appendix A",
       "inputs": {
         "scopes": { "services/auth/**": "auth" },
@@ -181,13 +181,13 @@
         ]
       },
       "expected": {
-        "own_trust": { "auth": "T3" }
+        "own_trust": { "auth": "T0" }
       }
     },
     {
       "id": "aggregation/floor/derivation-tampered",
       "kind": "scope_floor",
-      "description": "A derivation proof that fails verification (outputs not byte-identical) is void: the output paths contribute the commit's raw level, flooring the scope.",
+      "description": "A failed derivation claim supplies no elevation: the output paths contribute the commit's raw level, flooring the scope.",
       "spec": "§4.4",
       "inputs": {
         "scopes": { "services/auth/**": "auth" },
@@ -212,7 +212,7 @@
     {
       "id": "aggregation/floor/derivation-partial-outputs",
       "kind": "scope_floor",
-      "description": "A verified derivation re-levels only the declared output paths: a path smuggled alongside the regenerated outputs contributes the commit's raw level.",
+      "description": "Even a locally verified derivation claim supplies no portable elevation; every changed path contributes the commit's raw level.",
       "spec": "§4.4",
       "inputs": {
         "scopes": { "services/auth/**": "auth" },
@@ -223,6 +223,110 @@
             "level": "T0",
             "paths": ["services/auth/internal/gen/server.go", "services/auth/middleware.go"],
             "derivation": {
+              "outputs": ["services/auth/internal/gen/**"],
+              "verified": true,
+              "inherited_level": "T3"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T0" }
+      }
+    },
+    {
+      "id": "aggregation/floor/derivation-fixed-point-not-proof",
+      "kind": "scope_floor",
+      "description": "A no-op/fixed-point generator claim does not prove derivation from trusted inputs and does not raise generated output trust.",
+      "spec": "§4.4",
+      "inputs": {
+        "scopes": { "services/auth/**": "auth" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/api/openapi.yaml"] },
+          {
+            "id": "c2",
+            "level": "T0",
+            "paths": ["services/auth/internal/gen/server.go"],
+            "derivation": {
+              "claim": "fixed_point",
+              "outputs": ["services/auth/internal/gen/**"],
+              "verified": true,
+              "inherited_level": "T3"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T0" }
+      }
+    },
+    {
+      "id": "aggregation/floor/derivation-undeclared-read",
+      "kind": "scope_floor",
+      "description": "A claim whose command may read undeclared inputs is unsupported by the portable baseline and cannot raise output trust.",
+      "spec": "§4.4",
+      "inputs": {
+        "scopes": { "services/auth/**": "auth" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/api/openapi.yaml"] },
+          {
+            "id": "c2",
+            "level": "T0",
+            "paths": ["services/auth/internal/gen/types.go"],
+            "derivation": {
+              "claim": "undeclared_read",
+              "outputs": ["services/auth/internal/gen/**"],
+              "verified": true,
+              "inherited_level": "T3"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T0" }
+      }
+    },
+    {
+      "id": "aggregation/floor/derivation-environment-network-time",
+      "kind": "scope_floor",
+      "description": "Environment, network, or time dependent generator claims are not portable proof profiles and cannot raise output trust.",
+      "spec": "§4.4",
+      "inputs": {
+        "scopes": { "services/auth/**": "auth" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/api/openapi.yaml"] },
+          {
+            "id": "c2",
+            "level": "T0",
+            "paths": ["services/auth/internal/gen/client.go"],
+            "derivation": {
+              "claim": "ambient_environment",
+              "outputs": ["services/auth/internal/gen/**"],
+              "verified": true,
+              "inherited_level": "T3"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "own_trust": { "auth": "T0" }
+      }
+    },
+    {
+      "id": "aggregation/floor/derivation-tampered-toolchain",
+      "kind": "scope_floor",
+      "description": "A tampered or merely claimed toolchain pin is not an accepted proof profile and cannot raise generated output trust.",
+      "spec": "§4.4",
+      "inputs": {
+        "scopes": { "services/auth/**": "auth" },
+        "commits": [
+          { "id": "c1", "level": "T3", "paths": ["services/auth/api/openapi.yaml"] },
+          {
+            "id": "c2",
+            "level": "T0",
+            "paths": ["services/auth/internal/gen/server.go"],
+            "derivation": {
+              "claim": "tampered_toolchain",
               "outputs": ["services/auth/internal/gen/**"],
               "verified": true,
               "inherited_level": "T3"

@@ -26,13 +26,14 @@ func TestConformanceDecision(t *testing.T) {
 		t.Run(vec.ID, func(t *testing.T) {
 			var inputs struct {
 				EffectiveTrust  string `json:"effective_trust"`
+				Threshold       string `json:"threshold"`
 				Blast           string `json:"blast"`
 				Strategy        string `json:"strategy"`
 				DifferAvailable bool   `json:"differ_available"`
 				SemanticFloor   string `json:"semantic_floor"`
 				ClaimedBump     string `json:"claimed_bump"`
-				CurrentVersion  string `json:"current_version"`
-				Iteration       uint64 `json:"iteration"`
+				CurrentVersion  string `json:"authenticated_version_base"`
+				Iteration       uint64 `json:"authenticated_iteration"`
 			}
 			var expected struct {
 				Channel  string  `json:"channel"`
@@ -49,6 +50,7 @@ func TestConformanceDecision(t *testing.T) {
 			}
 			in := DecideInputs{
 				Effective:       mustLevel(t, inputs.EffectiveTrust),
+				Threshold:       mustLevel(t, inputs.Threshold),
 				DifferAvailable: inputs.DifferAvailable,
 				Current:         current,
 				Iteration:       inputs.Iteration,

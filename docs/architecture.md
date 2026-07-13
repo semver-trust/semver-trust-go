@@ -116,7 +116,10 @@ vendored byte drifts from its pin. **Never hand-edit anything under
 `conformance/vendor/` or the manifest** — the only sanctioned refresh path is
 `python3 scripts/sync-conformance.py <spec-main-sha>`, which re-copies and
 re-pins from a stated spec commit. The manifest is also the single spec-version
-pin: `--version` reads the draft version and source commit from it.
+pin: `--version` reads the draft version and source commit from it. Because a
+single draft version pins vector *provenance* but not per-capability coverage,
+[conformance-coverage.md](conformance-coverage.md) records which suites are
+enforced versus pending as the v0.10 model is adopted.
 
 ## Invariant: injected clocks and trust roots (ADR-018)
 

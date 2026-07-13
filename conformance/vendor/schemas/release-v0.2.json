@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://semver-trust.dev/schemas/release-v0.2.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "SemVer-Trust Release Attestation Statement (v0.2)",
+  "description": "A complete in-toto Statement carrying the SemVer-Trust release successor predicate. Predicate type https://semver-trust.dev/release/v0.2.",
+  "type": "object",
+  "required": ["_type", "subject", "predicateType", "predicate"],
+  "additionalProperties": false,
+  "properties": {
+    "_type": { "const": "https://in-toto.io/Statement/v1" },
+    "subject": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/subject" }
+    },
+    "predicateType": { "const": "https://semver-trust.dev/release/v0.2" },
+    "predicate": {
+      "type": "object",
+      "required": [
+        "profile",
+        "repository",
+        "component",
+        "interval",
+        "policy_state",
+        "version_state",
+        "trust",
+        "provenance",
+        "evidence",
+        "decision",
+        "timestamp"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "$ref": "#/$defs/releaseProfile" },
+        "repository": { "$ref": "#/$defs/repositoryIdentity" },
+        "component": { "$ref": "#/$defs/component" },
+        "interval": { "$ref": "#/$defs/releaseInterval" },
+        "policy_state": { "$ref": "#/$defs/policyState" },
+        "version_state": { "$ref": "#/$defs/versionState" },
+        "trust": { "$ref": "#/$defs/trustResult" },
+        "provenance": { "$ref": "#/$defs/provenanceVector" },
+        "evidence": { "$ref": "#/$defs/evidenceVector" },
+        "decision": { "$ref": "#/$defs/releaseDecision" },
+        "timestamp": { "$ref": "#/$defs/dateTime" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      }
+    }
+  },
+  "$defs": {
+    "dateTime": { "type": "string", "format": "date-time" },
+    "digestSet": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "digestDescriptor": {
+      "type": "object",
+      "required": ["digest"],
+      "additionalProperties": false,
+      "properties": {
+        "uri": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digestSet" }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": ["name", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digestSet" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digestSet" }
+      }
+    },
+    "releaseProfile": {
+      "type": "object",
+      "required": [
+        "specification",
+        "predicate_contract",
+        "evaluator",
+        "repository_identity",
+        "graph",
+        "policy",
+        "verification_time",
+        "verification_instant"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "specification": { "$ref": "#/$defs/profile" },
+        "predicate_contract": { "$ref": "#/$defs/profile" },
+        "evaluator": { "$ref": "#/$defs/profile" },
+        "repository_identity": { "$ref": "#/$defs/profile" },
+        "graph": { "$ref": "#/$defs/profile" },
+        "policy": { "$ref": "#/$defs/profile" },
+        "verification_time": { "$ref": "#/$defs/profile" },
+        "verification_instant": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "repositoryIdentity": {
+      "type": "object",
+      "required": ["id", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "origin": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digestSet" }
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": ["name", "tag_prefix"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "tag_prefix": { "type": "string" }
+      }
+    },
+    "objectIdentity": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digestSet" }
+      }
+    },
+    "tagIdentity": {
+      "type": "object",
+      "required": ["name", "raw_ref_oid", "peeled_commit_oid"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "raw_ref_oid": { "type": "string", "minLength": 1 },
+        "peeled_commit_oid": { "type": "string", "minLength": 1 }
+      }
+    },
+    "releaseInterval": {
+      "type": "object",
+      "required": ["mode", "to", "source_identity"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "enum": ["inception", "adoption", "recurring"] },
+        "to": { "$ref": "#/$defs/objectIdentity" },
+        "adoption_boundary": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/objectIdentity" }]
+        },
+        "predecessor_attestation": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/objectIdentity" }]
+        },
+        "source_identity": { "$ref": "#/$defs/digestSet" }
+      }
+    },
+    "policyState": {
+      "type": "object",
+      "required": [
+        "active_policy",
+        "active_trust_roots",
+        "candidate_policy",
+        "candidate_trust_roots",
+        "mandatory_workflows",
+        "authority",
+        "authority_identity"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "active_policy": { "$ref": "#/$defs/digestDescriptor" },
+        "active_trust_roots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/digestDescriptor" }
+        },
+        "candidate_policy": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/digestDescriptor" }]
+        },
+        "candidate_trust_roots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/digestDescriptor" }
+        },
+        "mandatory_workflows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/digestDescriptor" }
+        },
+        "authority": { "type": "string", "enum": ["bootstrap", "predecessor"] },
+        "authority_identity": { "$ref": "#/$defs/digestDescriptor" }
+      }
+    },
+    "versionState": {
+      "type": "object",
+      "required": [
+        "action",
+        "genesis",
+        "predecessor",
+        "prior_state",
+        "resulting_state",
+        "target_core",
+        "target_bump",
+        "emission",
+        "target_lineage",
+        "pending_corrective_floor"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string", "enum": ["advance", "recut", "supersede"] },
+        "genesis": { "type": "boolean" },
+        "predecessor": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/tagIdentity" }]
+        },
+        "prior_state": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/stateIdentity" }]
+        },
+        "resulting_state": { "$ref": "#/$defs/stateIdentity" },
+        "target_core": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+        "target_bump": { "$ref": "#/$defs/bump" },
+        "emission": { "$ref": "#/$defs/tagEmission" },
+        "target_lineage": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/objectIdentity" }
+        },
+        "iteration": {
+          "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 1 }]
+        },
+        "pending_corrective_floor": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/bump" }]
+        }
+      }
+    },
+    "tagEmission": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["tag", "none"] },
+        "tag": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/tagIdentity" }]
+        }
+      }
+    },
+    "stateIdentity": {
+      "type": "object",
+      "required": ["id", "digest", "canonicalization"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digestSet" },
+        "canonicalization": { "$ref": "#/$defs/profile" }
+      }
+    },
+    "trustLevel": { "type": "string", "enum": ["T0", "T1", "T2", "T3"] },
+    "bump": { "type": "string", "enum": ["major", "minor", "patch"] },
+    "trustResult": {
+      "type": "object",
+      "required": ["effective", "own", "floor_sources"],
+      "additionalProperties": false,
+      "properties": {
+        "effective": { "$ref": "#/$defs/trustLevel" },
+        "own": { "$ref": "#/$defs/trustLevel" },
+        "floor_sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/objectIdentity" }
+        }
+      }
+    },
+    "provenanceVector": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/provenanceCommit" }
+    },
+    "provenanceCommit": {
+      "type": "object",
+      "required": ["sha", "level", "authorship", "review"],
+      "additionalProperties": false,
+      "properties": {
+        "sha": { "type": "string", "minLength": 1 },
+        "level": { "$ref": "#/$defs/trustLevel" },
+        "authorship": {
+          "type": "object",
+          "required": ["class"],
+          "additionalProperties": false,
+          "properties": {
+            "class": {
+              "type": "string",
+              "enum": ["human", "agent", "mixed", "ambiguous"]
+            },
+            "actor": { "type": "string", "minLength": 1 },
+            "credential_identity": { "type": "string", "minLength": 1 },
+            "trailers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "review": {
+          "type": "object",
+          "required": ["class"],
+          "additionalProperties": false,
+          "properties": {
+            "class": { "type": "string", "enum": ["human", "agent", "none"] },
+            "actor": { "type": "string", "minLength": 1 },
+            "attestation": { "$ref": "#/$defs/objectIdentity" }
+          }
+        },
+        "derivations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/objectIdentity" }
+        }
+      }
+    },
+    "evidenceVector": {
+      "type": "object",
+      "required": ["compatibility", "blast_radius"],
+      "additionalProperties": false,
+      "properties": {
+        "compatibility": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/objectIdentity" }]
+        },
+        "blast_radius": { "$ref": "#/$defs/objectIdentity" },
+        "coverage": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/objectIdentity" }]
+        }
+      }
+    },
+    "releaseDecision": {
+      "type": "object",
+      "required": [
+        "claimed_bump",
+        "semantic_floor",
+        "threshold",
+        "strategy",
+        "channel",
+        "supersedes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "claimed_bump": { "$ref": "#/$defs/bump" },
+        "semantic_floor": { "$ref": "#/$defs/bump" },
+        "threshold": { "$ref": "#/$defs/trustLevel" },
+        "strategy": { "type": "string", "enum": ["demote", "inflate"] },
+        "channel": { "type": "string", "enum": ["clean", "prerelease"] },
+        "supersedes": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/objectIdentity" }]
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -29,16 +29,12 @@ type aggVector struct {
 }
 
 type aggCommit struct {
-	ID         string         `json:"id"`
-	Level      string         `json:"level"`
-	Paths      []string       `json:"paths"`
-	Derivation *aggDerivation `json:"derivation"`
-}
-
-type aggDerivation struct {
-	Outputs        []string `json:"outputs"`
-	Verified       bool     `json:"verified"`
-	InheritedLevel string   `json:"inherited_level"`
+	ID    string   `json:"id"`
+	Level string   `json:"level"`
+	Paths []string `json:"paths"`
+	// A vector's `derivation` object (ADR-033: non-authoritative) is
+	// deliberately not mapped: generated outputs floor at the commit's own
+	// level, so the derivation claim never re-levels anything.
 }
 
 func loadAggVectors(t *testing.T, env, name string) aggVectorFile {
@@ -87,13 +83,6 @@ func toCommits(t *testing.T, in []aggCommit) []Commit {
 		commit := Commit{ID: c.ID, Paths: c.Paths}
 		if c.Level != "" {
 			commit.Level = mustLevel(t, c.Level)
-		}
-		if c.Derivation != nil {
-			commit.Derivation = &DerivationFacts{
-				Outputs:        c.Derivation.Outputs,
-				Verified:       c.Derivation.Verified,
-				InheritedLevel: mustLevel(t, c.Derivation.InheritedLevel),
-			}
 		}
 		commits[i] = commit
 	}

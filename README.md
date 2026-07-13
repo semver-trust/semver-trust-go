@@ -20,9 +20,10 @@ tooling.
 ## Status
 
 `v0.1.0` is released. This is the official Go reference implementation of
-SemVer-Trust and conforms to the specification's **draft v0.3** conformance
-suite (128 vendored, digest-pinned vectors — see
-[the spec repository](https://github.com/semver-trust/spec)).
+SemVer-Trust. It vendors the specification's **draft v0.10** conformance
+vectors (digest-pinned — see [the spec repository](https://github.com/semver-trust/spec));
+which protocol capabilities are enforced versus still being adopted is tracked
+in [docs/conformance-coverage.md](docs/conformance-coverage.md).
 
 The repository releases *itself* under the scheme it implements: `v0.1.0` was
 cut on the clean channel at effective trust **T2**, and its decision can be
