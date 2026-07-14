@@ -1,0 +1,841 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.10",
+  "description": "Authenticated version-ancestry and exact-tag derivation vectors for SemVer-Trust §7.5 and §10 (ADR-029). Graphs, refs, authorities, and decision inputs are immutable fixtures referenced by vectors.",
+  "graphs": {
+    "new": [
+      { "id": "root", "parents": [] },
+      { "id": "to", "parents": ["root"] }
+    ],
+    "legacy": [
+      { "id": "root", "parents": [] },
+      { "id": "legacy", "parents": ["root"] },
+      { "id": "boundary", "parents": ["legacy"] },
+      { "id": "to", "parents": ["boundary"] }
+    ],
+    "legacy-equal": [
+      { "id": "root", "parents": [] },
+      { "id": "boundary", "parents": ["root"] },
+      { "id": "to", "parents": ["boundary"] }
+    ],
+    "legacy-nonancestor": [
+      { "id": "root", "parents": [] },
+      { "id": "boundary", "parents": ["root"] },
+      { "id": "to", "parents": ["boundary"] },
+      { "id": "legacy", "parents": [] }
+    ],
+    "recurring": [
+      { "id": "base", "parents": [] },
+      { "id": "p", "parents": ["base"] },
+      { "id": "to", "parents": ["p"] }
+    ],
+    "supersede": [
+      { "id": "base", "parents": [] },
+      { "id": "p", "parents": ["base"] }
+    ]
+  },
+  "ref_sets": {
+    "none": {},
+    "legacy-ok": {
+      "v0.9.4": { "ref_oid": "tag-v094", "commit_oid": "legacy" }
+    },
+    "legacy-equal": {
+      "v0.9.4": { "ref_oid": "tag-v094", "commit_oid": "boundary" }
+    },
+    "legacy-ref-moved": {
+      "v0.9.4": { "ref_oid": "tag-v094-moved", "commit_oid": "legacy" }
+    },
+    "legacy-commit-moved": {
+      "v0.9.4": { "ref_oid": "tag-v094", "commit_oid": "boundary" }
+    },
+    "legacy-component": {
+      "lib/v0.9.4": { "ref_oid": "tag-lib-v094", "commit_oid": "legacy" }
+    },
+    "clean-v123": {
+      "v1.2.2": { "ref_oid": "tag-v122", "commit_oid": "base" },
+      "v1.2.3": { "ref_oid": "tag-v123", "commit_oid": "p" }
+    },
+    "genesis-v010-t0": {
+      "v0.1.0-t0.1": { "ref_oid": "tag-v010-t0-1", "commit_oid": "p" }
+    },
+    "trust-v130-t0": {
+      "v1.2.3": { "ref_oid": "tag-v123", "commit_oid": "base" },
+      "v1.3.0-t0.1": { "ref_oid": "tag-v130-t0-1", "commit_oid": "p" }
+    },
+    "trust-v130-t2": {
+      "v1.2.3": { "ref_oid": "tag-v123", "commit_oid": "base" },
+      "v1.3.0-t0.1": { "ref_oid": "tag-v130-t0-1", "commit_oid": "p" },
+      "v1.3.0-t2.1": { "ref_oid": "tag-v130-t2-1", "commit_oid": "p" }
+    },
+    "trust-v131-from-trust-v130": {
+      "v1.3.0-t0.1": { "ref_oid": "tag-v130-t0-1", "commit_oid": "base" },
+      "v1.3.1-t0.1": { "ref_oid": "tag-v131-t0-1", "commit_oid": "p" }
+    },
+    "trust-v130-collision": {
+      "v1.2.3": { "ref_oid": "tag-v123", "commit_oid": "base" },
+      "v1.3.0-t0.1": { "ref_oid": "tag-v130-t0-1", "commit_oid": "p" },
+      "v1.3.0-t0.2": { "ref_oid": "tag-v130-t0-2", "commit_oid": "p" }
+    },
+    "clean-v130": {
+      "v1.2.3": { "ref_oid": "tag-v123", "commit_oid": "base" },
+      "v1.3.0": { "ref_oid": "tag-v130", "commit_oid": "p" }
+    }
+  },
+  "decisions": {
+    "minor-clean": {
+      "effective_trust": "T3",
+      "threshold": "T2",
+      "blast": "moderate",
+      "strategy": "demote",
+      "differ_available": true,
+      "semantic_floor": "minor",
+      "claimed_bump": "minor"
+    },
+    "minor-t0": {
+      "effective_trust": "T0",
+      "threshold": "T2",
+      "blast": "moderate",
+      "strategy": "demote",
+      "differ_available": true,
+      "semantic_floor": "minor",
+      "claimed_bump": "minor"
+    },
+    "minor-t2-prerelease": {
+      "effective_trust": "T2",
+      "threshold": "T2",
+      "blast": "high",
+      "strategy": "demote",
+      "differ_available": true,
+      "semantic_floor": "minor",
+      "claimed_bump": "minor"
+    },
+    "patch-t0": {
+      "effective_trust": "T0",
+      "threshold": "T2",
+      "blast": "moderate",
+      "strategy": "demote",
+      "differ_available": true,
+      "semantic_floor": "patch",
+      "claimed_bump": "patch"
+    },
+    "patch-t3-high-no-differ": {
+      "effective_trust": "T3",
+      "threshold": "T2",
+      "blast": "high",
+      "strategy": "demote",
+      "differ_available": false,
+      "semantic_floor": "patch",
+      "claimed_bump": "patch"
+    },
+    "major-t0": {
+      "effective_trust": "T0",
+      "threshold": "T2",
+      "blast": "moderate",
+      "strategy": "demote",
+      "differ_available": true,
+      "semantic_floor": "major",
+      "claimed_bump": "patch"
+    }
+  },
+  "target_reevaluations": {
+    "trust-v130-reviewed-to-t2": {
+      "authenticated": true,
+      "predecessor": "trust-v130-t0",
+      "target_core": "1.3.0",
+      "source_intervals": ["base..p", "p..to"],
+      "effective_trust": "T2"
+    },
+    "corrective-v130-reviewed-to-t3": {
+      "authenticated": true,
+      "predecessor": "corrective-major-v130",
+      "target_core": "1.3.0",
+      "source_intervals": ["base..p", "p..to"],
+      "effective_trust": "T3"
+    },
+    "trust-v130-unauthenticated-to-t3": {
+      "authenticated": false,
+      "predecessor": "trust-v130-t0",
+      "target_core": "1.3.0",
+      "source_intervals": ["base..p", "p..to"],
+      "effective_trust": "T3"
+    }
+  },
+  "bootstraps": {
+    "new-inception": {
+      "authenticated": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "interval_mode": "inception",
+      "boundary": null,
+      "tag_prefix": "",
+      "version_predecessor": null
+    },
+    "missing-version-selection": {
+      "authenticated": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "interval_mode": "inception",
+      "boundary": null,
+      "tag_prefix": ""
+    },
+    "legacy-inception": {
+      "authenticated": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "interval_mode": "inception",
+      "boundary": null,
+      "tag_prefix": "",
+      "version_predecessor": { "tag": "v0.9.4", "ref_oid": "tag-v094", "commit_oid": "legacy" }
+    },
+    "legacy-adoption": {
+      "authenticated": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "interval_mode": "adoption",
+      "boundary": "boundary",
+      "tag_prefix": "",
+      "version_predecessor": { "tag": "v0.9.4", "ref_oid": "tag-v094", "commit_oid": "legacy" }
+    },
+    "legacy-adoption-equal": {
+      "authenticated": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "interval_mode": "adoption",
+      "boundary": "boundary",
+      "tag_prefix": "",
+      "version_predecessor": { "tag": "v0.9.4", "ref_oid": "tag-v094", "commit_oid": "boundary" }
+    },
+    "legacy-malformed": {
+      "authenticated": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "interval_mode": "adoption",
+      "boundary": "boundary",
+      "tag_prefix": "",
+      "version_predecessor": { "tag": "v0.9", "ref_oid": "tag-v09", "commit_oid": "legacy" }
+    },
+    "legacy-ambiguous": {
+      "authenticated": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "interval_mode": "adoption",
+      "boundary": "boundary",
+      "tag_prefix": "",
+      "version_predecessor": [
+        { "tag": "v0.9.4", "ref_oid": "tag-v094", "commit_oid": "legacy" },
+        { "tag": "v0.9.3", "ref_oid": "tag-v093", "commit_oid": "legacy" }
+      ]
+    },
+    "legacy-component-mismatch": {
+      "authenticated": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "interval_mode": "adoption",
+      "boundary": "boundary",
+      "tag_prefix": "",
+      "version_predecessor": { "tag": "lib/v0.9.4", "ref_oid": "tag-lib-v094", "commit_oid": "legacy" }
+    }
+  },
+  "predecessors": {
+    "genesis-v010-t0": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v0.1.0-t0.1", "ref_oid": "tag-v010-t0-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": null,
+        "baseline_core": "0.0.0",
+        "target_core": "0.1.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["inception-through-p"],
+        "iterations": { "T0": 1 }
+      }
+    },
+    "corrective-major-v130": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0-t0.1", "ref_oid": "tag-v130-t0-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1 },
+        "corrective_floor": "major"
+      }
+    },
+    "invalid-corrective-v130": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0-t0.1", "ref_oid": "tag-v130-t0-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1 },
+        "corrective_floor": "patch"
+      }
+    },
+    "clean-v123": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.2", "ref_oid": "tag-v122", "commit_oid": "base" },
+        "baseline_core": "1.2.2",
+        "target_core": "1.2.3",
+        "target_bump": "patch",
+        "clean_accepted": true,
+        "target_intervals": ["base..p"],
+        "iterations": {}
+      }
+    },
+    "invalid-bump-v123": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.2", "ref_oid": "tag-v122", "commit_oid": "base" },
+        "baseline_core": "1.2.2",
+        "target_core": "1.2.3",
+        "target_bump": "minor",
+        "clean_accepted": true,
+        "target_intervals": ["base..p"],
+        "iterations": {}
+      }
+    },
+    "trust-v130-t0": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0-t0.1", "ref_oid": "tag-v130-t0-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1 }
+      }
+    },
+    "trust-v130-t2": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0-t2.1", "ref_oid": "tag-v130-t2-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1, "T2": 1 }
+      }
+    },
+    "trust-v131-from-trust-v130": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.1-t0.1", "ref_oid": "tag-v131-t0-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.3.0-t0.1", "ref_oid": "tag-v130-t0-1", "commit_oid": "base" },
+        "baseline_core": "1.3.0",
+        "target_core": "1.3.1",
+        "target_bump": "patch",
+        "clean_accepted": false,
+        "target_intervals": ["prior..base", "base..p"],
+        "iterations": { "T0": 1 }
+      }
+    },
+    "ambiguous-v130": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0-t0.1", "ref_oid": "tag-v130-t0-1", "commit_oid": "p" },
+        { "tag": "v1.3.0-t2.1", "ref_oid": "tag-v130-t2-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1, "T2": 1 }
+      }
+    },
+    "other-component": {
+      "accepted": true,
+      "chain_head": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "library",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.2", "ref_oid": "tag-v122", "commit_oid": "base" },
+        "baseline_core": "1.2.2",
+        "target_core": "1.2.3",
+        "target_bump": "patch",
+        "clean_accepted": true,
+        "target_intervals": ["base..p"],
+        "iterations": {}
+      }
+    }
+  },
+  "superseded": {
+    "current-trust-v130": {
+      "accepted": true,
+      "source_successor_exists": false,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0-t0.1", "ref_oid": "tag-v130-t0-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1 }
+      }
+    },
+    "corrective-major-v130": {
+      "accepted": true,
+      "source_successor_exists": false,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0-t0.1", "ref_oid": "tag-v130-t0-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1 },
+        "corrective_floor": "major"
+      }
+    },
+    "late-trust-v130": {
+      "accepted": true,
+      "source_successor_exists": true,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0-t0.1", "ref_oid": "tag-v130-t0-1", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": false,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1 }
+      }
+    },
+    "current-clean-v130": {
+      "accepted": true,
+      "source_successor_exists": false,
+      "repository": "https://example.test/acme/repo",
+      "component": "app",
+      "tag_prefix": "",
+      "to": "p",
+      "canonical_tags": [
+        { "tag": "v1.3.0", "ref_oid": "tag-v130", "commit_oid": "p" }
+      ],
+      "version_state": {
+        "baseline": { "tag": "v1.2.3", "ref_oid": "tag-v123", "commit_oid": "base" },
+        "baseline_core": "1.2.3",
+        "target_core": "1.3.0",
+        "target_bump": "minor",
+        "clean_accepted": true,
+        "target_intervals": ["base..p"],
+        "iterations": { "T0": 1 }
+      }
+    }
+  },
+  "vectors": [
+    {
+      "id": "version/genesis/inception-null-starts-v0-line",
+      "kind": "version_ancestry",
+      "description": "Explicit null version predecessor starts a new line; a MINOR decision derives v0.1.0 from synthetic v0.0.0.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "new-inception", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "inception", "boundary": null, "to": "to", "graph": "new", "refs": "none", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": null, "target_core": "0.1.0", "iteration": null, "version": "v0.1.0", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/genesis/inception-null-prerelease-starts-iteration-one",
+      "kind": "version_ancestry",
+      "description": "A demoted first MINOR release derives v0.1.0-t0.1; iteration is not supplied.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "new-inception", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "inception", "boundary": null, "to": "to", "graph": "new", "refs": "none", "decision": "minor-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": null, "target_core": "0.1.0", "iteration": 1, "version": "v0.1.0-t0.1", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/genesis/rejects-implicit-null-selection",
+      "kind": "version_ancestry",
+      "description": "An omitted predecessor field cannot be inferred as null new-line genesis.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "missing-version-selection", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "inception", "boundary": null, "to": "to", "graph": "new", "refs": "none", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_selection_missing" }
+    },
+    {
+      "id": "version/genesis/inception-continues-legacy-line",
+      "kind": "version_ancestry",
+      "description": "Full-history inception may independently continue an authenticated legacy v0.9.4 line.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-inception", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "inception", "boundary": null, "to": "to", "graph": "legacy", "refs": "legacy-ok", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v0.9.4", "target_core": "0.10.0", "iteration": null, "version": "v0.10.0", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/genesis/adoption-predecessor-before-boundary",
+      "kind": "version_ancestry",
+      "description": "Legacy v0.9.4 may precede a later included adoption boundary without changing adoption disclosure.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-adoption", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy", "refs": "legacy-ok", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v0.9.4", "target_core": "0.10.0", "iteration": null, "version": "v0.10.0", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/genesis/adoption-predecessor-equals-boundary",
+      "kind": "version_ancestry",
+      "description": "Boundary and version predecessor may coincide only because both bindings independently name the same commit.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-adoption-equal", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy-equal", "refs": "legacy-equal", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v0.9.4", "target_core": "0.10.0", "iteration": null, "version": "v0.10.0", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/genesis/rejects-moved-raw-ref",
+      "kind": "version_ancestry",
+      "description": "Recreating or moving an annotated tag object fails even when it still peels to the legacy commit.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-adoption", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy", "refs": "legacy-ref-moved", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_ref_moved" }
+    },
+    {
+      "id": "version/genesis/rejects-changed-peeled-commit",
+      "kind": "version_ancestry",
+      "description": "A stable-looking raw ref cannot peel to a different commit.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-adoption", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy", "refs": "legacy-commit-moved", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_commit_moved" }
+    },
+    {
+      "id": "version/genesis/rejects-missing-predecessor-tag",
+      "kind": "version_ancestry",
+      "description": "A non-null bootstrap predecessor must resolve exactly; absence is not implicit genesis.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-adoption", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy", "refs": "none", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_missing" }
+    },
+    {
+      "id": "version/genesis/rejects-malformed-predecessor-tag",
+      "kind": "version_ancestry",
+      "description": "Genesis continuation requires one canonical clean §7.1 tag.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-malformed", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy", "refs": "none", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_malformed" }
+    },
+    {
+      "id": "version/genesis/rejects-ambiguous-predecessor",
+      "kind": "version_ancestry",
+      "description": "A descriptor with multiple candidate version predecessors fails instead of choosing the highest tag.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-ambiguous", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy", "refs": "legacy-ok", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_ambiguous" }
+    },
+    {
+      "id": "version/genesis/rejects-component-prefix-mismatch",
+      "kind": "version_ancestry",
+      "description": "A component-qualified legacy tag cannot be replayed into a chain with another canonical prefix.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-component-mismatch", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy", "refs": "legacy-component", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_component_mismatch" }
+    },
+    {
+      "id": "version/genesis/rejects-predecessor-after-or-outside-boundary",
+      "kind": "version_ancestry",
+      "description": "An adoption version predecessor must be an ancestor of or equal to the included boundary.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-adoption", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy-nonancestor", "refs": "legacy-ok", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_not_ancestor" }
+    },
+    {
+      "id": "version/genesis/rejects-caller-version-override",
+      "kind": "version_ancestry",
+      "description": "Identical authenticated adoption state cannot be redirected to v0.0.0 by a caller current-version input.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "legacy-adoption", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "adoption", "boundary": "boundary", "to": "to", "graph": "legacy", "refs": "legacy-ok", "decision": "minor-clean", "requested_version_predecessor": "v0.0.0", "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_override" }
+    },
+    {
+      "id": "version/genesis/rejects-caller-iteration",
+      "kind": "version_ancestry",
+      "description": "A caller cannot choose t0.7 for a first prerelease; the derived iteration is one.",
+      "spec": "§7.5",
+      "inputs": { "authority": "bootstrap", "bootstrap": "new-inception", "predecessor": null, "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "inception", "boundary": null, "to": "to", "graph": "new", "refs": "none", "decision": "minor-t0", "requested_version_predecessor": null, "requested_iteration": 7 },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_iteration_override" }
+    },
+    {
+      "id": "version/recurring/advance-from-accepted-clean-predecessor",
+      "kind": "version_ancestry",
+      "description": "The accepted predecessor v1.2.3, not a caller flag, supplies the recurring MINOR baseline.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "clean-v123", "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "clean-v123", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.2.3", "target_core": "1.3.0", "iteration": null, "version": "v1.3.0", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/recut-same-level-increments-iteration",
+      "kind": "version_ancestry",
+      "description": "A second T0 cut of unpromoted target v1.3.0 derives t0.2 from accepted state.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "minor-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "1.3.0", "iteration": 2, "version": "v1.3.0-t0.2", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/recut-preserves-synthetic-genesis-baseline",
+      "kind": "version_ancestry",
+      "description": "A re-cut of the first unpromoted target retains synthetic v0.0.0 and complete inception history as its baseline.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "genesis-v010-t0", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "genesis-v010-t0", "decision": "minor-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v0.1.0-t0.1", "target_core": "0.1.0", "iteration": 2, "version": "v0.1.0-t0.2", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/recut-new-level-starts-at-one",
+      "kind": "version_ancestry",
+      "description": "The first T2 cut of target v1.3.0 derives t2.1 even though T0 already has an iteration.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "minor-t2-prerelease", "target_reevaluation": "trust-v130-reviewed-to-t2", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "1.3.0", "iteration": 1, "version": "v1.3.0-t2.1", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/equal-compatibility-assertions-are-nonauthoritative",
+      "kind": "version_ancestry",
+      "description": "Legacy CLI values may assert the authenticated predecessor and derived iteration exactly, but do not select either.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "minor-t0", "requested_version_predecessor": "v1.3.0-t0.1", "requested_iteration": 2 },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "1.3.0", "iteration": 2, "version": "v1.3.0-t0.2", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/advance-from-trust-target",
+      "kind": "version_ancestry",
+      "description": "An explicit advance abandons unpromoted v1.3.0 and derives PATCH target v1.3.1 from authenticated state.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "patch-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "1.3.1", "iteration": 1, "version": "v1.3.1-t0.1", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/rejects-advance-trust-laundering-without-reevaluation",
+      "kind": "version_ancestry",
+      "description": "Advancing the core does not let one T3 interval erase an unpromoted T0 predecessor lineage.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "minor-clean", "target_reevaluation": null, "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_target_trust_reevaluation_required" }
+    },
+    {
+      "id": "version/recurring/advance-honors-pending-corrective-floor",
+      "kind": "version_ancestry",
+      "description": "A pending MAJOR correction overrides an incremental PATCH decision and advances v1.3.0 to v2.0.0.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "corrective-major-v130", "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "patch-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "2.0.0", "iteration": 1, "version": "v2.0.0-t0.1", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/corrective-floor-feeds-decision-channel",
+      "kind": "version_ancestry",
+      "description": "The pending MAJOR floor is applied before channel selection, so T3/high does not inherit PATCH-only differ demotion.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "corrective-major-v130", "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "patch-t3-high-no-differ", "target_reevaluation": "corrective-v130-reviewed-to-t3", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "2.0.0", "iteration": null, "version": "v2.0.0", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/recut-preserves-trust-prerelease-baseline",
+      "kind": "version_ancestry",
+      "description": "After advancing from a trust prerelease, the accepted trust tag and source remain the new target's compatibility baseline.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v131-from-trust-v130", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v131-from-trust-v130", "decision": "patch-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.1-t0.1", "target_core": "1.3.1", "iteration": 2, "version": "v1.3.1-t0.2", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/recurring/rejects-recut-that-exceeds-target-bump",
+      "kind": "version_ancestry",
+      "description": "A MAJOR semantic floor cannot be hidden inside a re-cut of a MINOR target.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "major-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "recut_target_bump_exceeded" }
+    },
+    {
+      "id": "version/recurring/rejects-target-trust-laundering-without-reevaluation",
+      "kind": "version_ancestry",
+      "description": "A clean T3 fix interval cannot erase the accepted T0 contribution already accumulated under the same target.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "minor-clean", "target_reevaluation": null, "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_target_trust_reevaluation_required" }
+    },
+    {
+      "id": "version/recurring/rejects-unauthenticated-target-reevaluation",
+      "kind": "version_ancestry",
+      "description": "A caller assertion cannot upgrade the complete target lineage from T0 to T3.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "minor-clean", "target_reevaluation": "trust-v130-unauthenticated-to-t3", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_target_trust_reevaluation_invalid" }
+    },
+    {
+      "id": "version/recurring/rejects-recut-while-correction-is-pending",
+      "kind": "version_ancestry",
+      "description": "An accepted semantic invalidation requires a corrective advance; another same-target re-cut is not allowed.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "corrective-major-v130", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "minor-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_corrective_advance_required" }
+    },
+    {
+      "id": "version/recurring/rejects-ambiguous-canonical-decision-tag",
+      "kind": "version_ancestry",
+      "description": "Two canonical tags in one accepted predecessor cannot silently select version state.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "ambiguous-v130", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t2", "decision": "minor-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_ambiguous" }
+    },
+    {
+      "id": "version/recurring/rejects-component-mismatched-attestation",
+      "kind": "version_ancestry",
+      "description": "Version state is component-local even when another component has the same tag spelling.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "other-component", "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "clean-v123", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_subject_mismatch" }
+    },
+    {
+      "id": "version/recurring/rejects-inconsistent-target-bump-state",
+      "kind": "version_ancestry",
+      "description": "A predecessor cannot bind MINOR as the bump from v1.2.2 while claiming target v1.2.3.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "invalid-bump-v123", "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "clean-v123", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_state_mismatch" }
+    },
+    {
+      "id": "version/recurring/rejects-non-increasing-corrective-floor",
+      "kind": "version_ancestry",
+      "description": "A pending PATCH correction is invalid when the bound target already used a MINOR bump.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "invalid-corrective-v130", "superseded": null, "action": "advance", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-t0", "decision": "patch-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_predecessor_state_mismatch" }
+    },
+    {
+      "id": "version/recurring/rejects-existing-output-tag",
+      "kind": "version_ancestry",
+      "description": "Derived t0.2 cannot overwrite an existing tag, even if that tag points at an older accepted commit.",
+      "spec": "§7.5",
+      "inputs": { "authority": "predecessor", "bootstrap": null, "predecessor": "trust-v130-t0", "superseded": null, "action": "recut", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "to", "graph": "recurring", "refs": "trust-v130-collision", "decision": "minor-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verification_failed", "version_predecessor": null, "target_core": null, "iteration": null, "version": null, "advances_version_head": false, "reason": "version_output_tag_exists" }
+    },
+    {
+      "id": "version/supersede/promotion-preserves-target",
+      "kind": "version_ancestry",
+      "description": "Promotion at the same TO emits clean v1.3.0 without applying another MINOR bump.",
+      "spec": "§7.5",
+      "inputs": { "authority": "superseded", "bootstrap": null, "predecessor": null, "superseded": "current-trust-v130", "action": "supersede", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "p", "graph": "supersede", "refs": "trust-v130-t0", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "1.3.0", "iteration": null, "version": "v1.3.0", "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/supersede/late-promotion-does-not-rewrite-successor",
+      "kind": "version_ancestry",
+      "description": "After a source successor is accepted, late promotion is attestation-only and cannot occupy the old target's clean tag.",
+      "spec": "§7.5",
+      "inputs": { "authority": "superseded", "bootstrap": null, "predecessor": null, "superseded": "late-trust-v130", "action": "supersede", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "p", "graph": "supersede", "refs": "trust-v130-t0", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "1.3.0", "iteration": null, "version": null, "advances_version_head": false, "reason": null }
+    },
+    {
+      "id": "version/supersede/clean-demotion-is-attestation-only",
+      "kind": "version_ancestry",
+      "description": "Demotion cannot replace accepted clean v1.3.0 with a mutable tag; only the superseding attestation changes.",
+      "spec": "§7.5",
+      "inputs": { "authority": "superseded", "bootstrap": null, "predecessor": null, "superseded": "current-clean-v130", "action": "supersede", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "p", "graph": "supersede", "refs": "clean-v130", "decision": "minor-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0", "target_core": "1.3.0", "iteration": null, "version": null, "advances_version_head": true, "reason": null }
+    },
+    {
+      "id": "version/supersede/under-bumped-target-invalidation-is-attestation-only",
+      "kind": "version_ancestry",
+      "description": "A newly proven MAJOR floor cannot rename an immutable MINOR target; the correction is attestation-only.",
+      "spec": "§7.5",
+      "inputs": { "authority": "superseded", "bootstrap": null, "predecessor": null, "superseded": "current-trust-v130", "action": "supersede", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "p", "graph": "supersede", "refs": "trust-v130-t0", "decision": "major-t0", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "1.3.0", "iteration": null, "version": null, "advances_version_head": true, "corrective_floor": "major", "reason": null }
+    },
+    {
+      "id": "version/supersede/revalidated-target-clears-corrective-floor",
+      "kind": "version_ancestry",
+      "description": "A same-head reevaluation that again proves the bound MINOR bump sufficient clears the pending correction and may promote.",
+      "spec": "§7.5",
+      "inputs": { "authority": "superseded", "bootstrap": null, "predecessor": null, "superseded": "corrective-major-v130", "action": "supersede", "repository": "https://example.test/acme/repo", "component": "app", "tag_prefix": "", "interval_mode": "recurring", "boundary": null, "to": "p", "graph": "supersede", "refs": "trust-v130-t0", "decision": "minor-clean", "requested_version_predecessor": null, "requested_iteration": null },
+      "expected": { "outcome": "verified", "version_predecessor": "v1.3.0-t0.1", "target_core": "1.3.0", "iteration": null, "version": "v1.3.0", "advances_version_head": true, "reason": null }
+    }
+  ]
+}
