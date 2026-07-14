@@ -3,6 +3,7 @@
 package vcs
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -51,6 +52,60 @@ func Tags(path string) ([]string, error) {
 		return nil, err
 	}
 	return tags, nil
+}
+
+// PeeledRef is a tag ref resolved to both its raw target OID and the commit it
+// ultimately peels to. For a lightweight tag the two are equal; for an
+// annotated tag RefOID is the tag object and CommitOID is the commit it wraps.
+// It is the shape the §7.5/ADR-029 version-ancestry ref-set (version.RefEntry)
+// consumes, where distinguishing the raw ref target from the peeled commit is
+// load-bearing.
+type PeeledRef struct {
+	RefOID    string
+	CommitOID string
+}
+
+// TagRefs returns every tag of the repository at path as a map from short tag
+// name to its raw ref OID and peeled commit OID. Annotated tags are peeled
+// through the tag object to the commit; lightweight tags have RefOID equal to
+// CommitOID. It is the production adapter feeding version-ancestry's authenticated
+// ref-set — unlike Tags, which returns bare refnames, it exposes the object
+// identities the evaluator binds against.
+func TagRefs(path string) (map[string]PeeledRef, error) {
+	apath, err := rootPath(path)
+	if err != nil {
+		return nil, err
+	}
+	r, err := git.PlainOpenWithOptions(apath, &git.PlainOpenOptions{DetectDotGit: true})
+	if err != nil {
+		return nil, err
+	}
+	refs, err := r.Tags()
+	if err != nil {
+		return nil, err
+	}
+
+	out := map[string]PeeledRef{}
+	err = refs.ForEach(func(ref *plumbing.Reference) error {
+		refOID := ref.Hash()
+		commitOID := refOID
+		// An annotated tag resolves to a tag object; peel it to the commit it
+		// wraps. A lightweight tag has no tag object (ErrTagNotFound) and points
+		// straight at the commit.
+		if tagObj, err := r.TagObject(refOID); err == nil {
+			c, err := tagObj.Commit()
+			if err != nil {
+				return fmt.Errorf("tag refs: peeling annotated tag %q: %w", ref.Name().Short(), err)
+			}
+			commitOID = c.Hash
+		}
+		out[ref.Name().Short()] = PeeledRef{RefOID: refOID.String(), CommitOID: commitOID.String()}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // rootPath resolves path to a directory to open a repository in: an empty path
