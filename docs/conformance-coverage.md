@@ -27,7 +27,7 @@ while the model is adopted incrementally (tracked in
 | review-qualification | §4.3 qualified review + canonical actors (ADR-031) | **enforced** |
 | range | §5.2 exact release intervals (ADR-027) | **enforced** |
 | policy-transition | §5.4 bootstrap + policy transitions (ADR-028) | **enforced** |
-| version-ancestry | §7.5 authenticated version state (ADR-029) | pending |
+| version-ancestry | §7.5 authenticated version state (ADR-029) | **enforced** |
 | source-evidence | §8.3 SLSA Source profiles (ADR-035) | pending |
 | publishing-profile | §7.4 ecosystem routing (ADR-034) | pending |
 | predicate-v0.2 | §8.1 release/v0.2 payload validation (ADR-030) | pending |
@@ -48,6 +48,17 @@ meta-path coverage, and under-level meta-commit rejection — is implemented and
 passes the suite over abstract policy state. The **production** verify path
 still loads the policy from TO (the pre-ADR-028 model); feeding
 `SelectPolicyTransition` real bootstrap/predecessor state is tracked in #76.
+
+**What "version-ancestry enforced" covers today:** the §7.5/ADR-029
+version-state logic (`version.SelectVersionAncestry`) — bootstrap/predecessor
+baseline selection, advance/recut/supersede actions, corrective floors,
+target-lineage re-evaluation, and derived target core / iteration / exact tag /
+head-advance — is implemented and passes the suite over abstract chain state.
+This is the resolution of the go#70 dogfood finding (the version line and the
+adoption-boundary disclosure become independent authenticated facts, not a
+function of `--from` spelling). The **production** release path still derives
+versions from `FROM`; wiring `SelectVersionAncestry` into it — which is what
+actually closes go#70 — is tracked in #76.
 
 **What "range enforced" covers today:** the §5.2/ADR-027 interval-selection
 logic (`vcs.SelectInterval`) — inception, adoption (bootstrap-pinned boundary,
