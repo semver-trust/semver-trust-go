@@ -1,0 +1,42 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.10",
+  "description": "Schema-instance vectors for the SemVer-Trust v0.2 successor predicate family. These are unsigned in-toto Statement payload fixtures; DSSE signing fixtures remain separate.",
+  "vectors": [
+    {
+      "id": "predicate-v02/release/valid-bootstrap",
+      "spec": "§8.1, ADR-030",
+      "kind": "release",
+      "inputs": { "payload": "predicate-v0.2/release-valid.json" },
+      "expected": { "schema_valid": true }
+    },
+    {
+      "id": "predicate-v02/release/valid-source-evidence-extension",
+      "spec": "§8.1, §8.3, ADR-030, ADR-035",
+      "kind": "release",
+      "inputs": { "payload": "predicate-v0.2/release-valid-source-evidence-extension.json" },
+      "expected": { "schema_valid": true, "source_evidence_extension": true }
+    },
+    {
+      "id": "predicate-v02/release/rejects-missing-authority-identity",
+      "spec": "§8.1, ADR-028, ADR-030",
+      "kind": "release",
+      "inputs": { "payload": "predicate-v0.2/release-missing-authority-identity.json" },
+      "expected": { "schema_valid": false }
+    },
+    {
+      "id": "predicate-v02/review/valid-final-revision-approval",
+      "spec": "§4.3, ADR-030, ADR-031",
+      "kind": "review",
+      "inputs": { "payload": "predicate-v0.2/review-valid.json" },
+      "expected": { "schema_valid": true }
+    },
+    {
+      "id": "predicate-v02/review/rejects-missing-effective-at-merge",
+      "spec": "§4.3, ADR-030, ADR-031",
+      "kind": "review",
+      "inputs": { "payload": "predicate-v0.2/review-missing-effective-at-merge.json" },
+      "expected": { "schema_valid": false }
+    }
+  ]
+}

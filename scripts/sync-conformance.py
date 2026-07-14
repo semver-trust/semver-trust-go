@@ -37,6 +37,16 @@ FILES = (
     "version-ancestry.json",
     "source-evidence.json",
     "publishing-profile.json",
+    # release/v0.2 + review/v0.2 predicate instances (ADR-030): the vector
+    # index plus the payload files it validates against the vendored v0.2
+    # schemas (§8.1). Payloads carry no vectors array, so manifest_test skips
+    # them in its spec_version cross-check.
+    "predicate-v0.2.json",
+    "predicate-v0.2/release-valid.json",
+    "predicate-v0.2/release-valid-source-evidence-extension.json",
+    "predicate-v0.2/release-missing-authority-identity.json",
+    "predicate-v0.2/review-valid.json",
+    "predicate-v0.2/review-missing-effective-at-merge.json",
     "LICENSE",
     # Cryptographic fixture material (docs/conformance-crypto-fixtures.md):
     # the injected registry, the deterministic fixture-repo builder, the

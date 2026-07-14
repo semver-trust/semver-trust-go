@@ -1,0 +1,56 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "cccccccccccccccccccccccccccccccccccccccc",
+      "digest": { "gitCommit": "cccccccccccccccccccccccccccccccccccccccc" }
+    }
+  ],
+  "predicateType": "https://semver-trust.dev/review/v0.2",
+  "predicate": {
+    "profile": {
+      "specification": { "name": "semver-trust", "version": "0.10" },
+      "predicate_contract": { "name": "review", "version": "0.2" },
+      "evaluator": { "name": "semver-trust-fixture", "version": "0.0.0" },
+      "repository_identity": { "name": "fixture-repository", "version": "0.1" },
+      "actor_identity": { "name": "fixture-actors", "version": "0.1" },
+      "source_control": { "name": "fixture-git", "version": "0.1" },
+      "verification_time": { "name": "fixture-clock", "version": "0.1" },
+      "verification_instant": "2026-07-12T20:00:00Z"
+    },
+    "repository": {
+      "id": "repo:semver-trust.test/auth",
+      "digest": { "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+    },
+    "review_target": {
+      "change": "pull-request:7",
+      "merge_context": "refs/heads/main",
+      "source_revisions": [{ "id": "commit:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }],
+      "target_revision": { "id": "commit:cccccccccccccccccccccccccccccccccccccccc" }
+    },
+    "reviewers": [
+      {
+        "actor": {
+          "id": "actor:human:alice",
+          "class": "human",
+          "digest": { "sha256": "1111111111111111111111111111111111111111111111111111111111111111" }
+        },
+        "credential_identity": "alice@semver-trust.test",
+        "class": "human",
+        "verdict": "approved",
+        "approval_state": "active",
+        "coverage": "final_revision",
+        "approved_diff": null,
+        "independent_context": null,
+        "approved_revision": { "id": "commit:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      }
+    ],
+    "merge": {
+      "strategy": "merge",
+      "capture_mode": "native",
+      "result_revision": { "id": "commit:cccccccccccccccccccccccccccccccccccccccc" },
+      "source_to_result": { "sha256": "2222222222222222222222222222222222222222222222222222222222222222" }
+    },
+    "timestamp": "2026-07-12T20:00:00Z"
+  }
+}

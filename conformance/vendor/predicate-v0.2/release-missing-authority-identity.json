@@ -1,0 +1,78 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "auth/v0.1.0-t2.1",
+      "digest": { "gitCommit": "cccccccccccccccccccccccccccccccccccccccc" }
+    }
+  ],
+  "predicateType": "https://semver-trust.dev/release/v0.2",
+  "predicate": {
+    "profile": {
+      "specification": { "name": "semver-trust", "version": "0.10" },
+      "predicate_contract": { "name": "release", "version": "0.2" },
+      "evaluator": { "name": "semver-trust-fixture", "version": "0.0.0" },
+      "repository_identity": { "name": "fixture-repository", "version": "0.1" },
+      "graph": { "name": "fixture-graph", "version": "0.1" },
+      "policy": { "name": "fixture-policy", "version": "0.1" },
+      "verification_time": { "name": "fixture-clock", "version": "0.1" },
+      "verification_instant": "2026-07-12T20:00:00Z"
+    },
+    "repository": {
+      "id": "repo:semver-trust.test/auth",
+      "digest": { "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+    },
+    "component": { "name": "auth", "tag_prefix": "auth/" },
+    "interval": {
+      "mode": "inception",
+      "to": { "id": "commit:cccccccccccccccccccccccccccccccccccccccc" },
+      "source_identity": { "gitCommit": "cccccccccccccccccccccccccccccccccccccccc" }
+    },
+    "policy_state": {
+      "active_policy": {
+        "path": ".semver-trust/policy.toml",
+        "digest": { "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      },
+      "active_trust_roots": [],
+      "candidate_policy": null,
+      "candidate_trust_roots": [],
+      "mandatory_workflows": [],
+      "authority": "bootstrap"
+    },
+    "version_state": {
+      "action": "advance",
+      "genesis": true,
+      "predecessor": null,
+      "prior_state": null,
+      "resulting_state": {
+        "id": "version-state:auth:v0.1.0-t2.1",
+        "digest": { "sha256": "1111111111111111111111111111111111111111111111111111111111111111" },
+        "canonicalization": { "name": "semver-trust-version-state-json", "version": "0.2" }
+      },
+      "target_core": "0.1.0",
+      "target_bump": "minor",
+      "emission": { "kind": "none", "tag": null },
+      "target_lineage": [],
+      "pending_corrective_floor": null
+    },
+    "trust": { "effective": "T2", "own": "T2", "floor_sources": [] },
+    "provenance": [
+      {
+        "sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "level": "T2",
+        "authorship": { "class": "agent" },
+        "review": { "class": "human" }
+      }
+    ],
+    "evidence": { "compatibility": null, "blast_radius": { "id": "blast:moderate" } },
+    "decision": {
+      "claimed_bump": "minor",
+      "semantic_floor": "minor",
+      "threshold": "T2",
+      "strategy": "demote",
+      "channel": "prerelease",
+      "supersedes": null
+    },
+    "timestamp": "2026-07-12T20:00:00Z"
+  }
+}
