@@ -35,6 +35,7 @@ FILES = (
     "range.json",
     "policy-transition.json",
     "version-ancestry.json",
+    "source-evidence.json",
     "LICENSE",
     # Cryptographic fixture material (docs/conformance-crypto-fixtures.md):
     # the injected registry, the deterministic fixture-repo builder, the

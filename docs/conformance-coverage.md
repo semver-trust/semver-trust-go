@@ -28,7 +28,7 @@ while the model is adopted incrementally (tracked in
 | range | §5.2 exact release intervals (ADR-027) | **enforced** |
 | policy-transition | §5.4 bootstrap + policy transitions (ADR-028) | **enforced** |
 | version-ancestry | §7.5 authenticated version state (ADR-029) | **enforced** |
-| source-evidence | §8.3 SLSA Source profiles (ADR-035) | pending |
+| source-evidence | §8.3 SLSA Source profiles (ADR-035) | **enforced** |
 | publishing-profile | §7.4 ecosystem routing (ADR-034) | pending |
 | predicate-v0.2 | §8.1 release/v0.2 payload validation (ADR-030) | pending |
 
@@ -59,6 +59,19 @@ adoption-boundary disclosure become independent authenticated facts, not a
 function of `--from` spelling). The **production** release path still derives
 versions from `FROM`; wiring `SelectVersionAncestry` into it — which is what
 actually closes go#70 — is tracked in #76.
+
+**What "source-evidence enforced" covers today:** the §8.3/ADR-035
+source-evidence profile evaluation (`source.SelectSourceEvidence`) — repository/
+resource binding, subject-revision matching, allowed-digest-algorithm and
+trusted-issuer authorization, `replay` vs `trusted_issuer` verification mode,
+freshness, hidden-demotion detection, and issuer equivocation — is implemented
+and passes the suite over abstract VSA / source-provenance facts. This is the
+consumption gate only: a signed Verification Summary is a summary from an
+issuer, so the profile decides whether to replay the underlying provenance or
+explicitly trust the issuer before its facts are used. It does **not** map SLSA
+Source levels to T-levels (ADR-035 rejects that), and no production path yet
+feeds it real VSAs — wiring source-evidence profiles into the verify pipeline is
+tracked in #76.
 
 **What "range enforced" covers today:** the §5.2/ADR-027 interval-selection
 logic (`vcs.SelectInterval`) — inception, adoption (bootstrap-pinned boundary,
