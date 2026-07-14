@@ -1,0 +1,266 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.10",
+  "description": "Source evidence profile binding vectors for SemVer-Trust draft v0.10 (§8.3). These test repository/resource matching, source-revision subject matching, replay vs trusted-issuer mode, issuer authorization, freshness, hidden demotion, and equivocation handling. They are profile-level vectors, not full raw source-control transcripts.",
+  "vectors": [
+    {
+      "id": "source-evidence/replay/valid",
+      "spec": "§8.3",
+      "description": "Replay mode accepts source provenance when repository resource URI, subject revision, digest algorithm, issuer authorization, and freshness all match.",
+      "inputs": {
+        "mode": "replay",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": true
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": true, "reason": null }
+    },
+    {
+      "id": "source-evidence/trusted-issuer/valid",
+      "spec": "§8.3",
+      "description": "Trusted-issuer mode accepts a summary only from an issuer explicitly authorized for the requested source facts.",
+      "inputs": {
+        "mode": "trusted_issuer",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": true, "reason": null }
+    },
+    {
+      "id": "source-evidence/rejects-resource-mismatch",
+      "spec": "§8.3",
+      "description": "A valid source statement for a different repository cannot be replayed into this release chain.",
+      "inputs": {
+        "mode": "trusted_issuer",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "cccccccccccccccccccccccccccccccccccccccc" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/billing",
+            "subject": { "gitCommit": "cccccccccccccccccccccccccccccccccccccccc" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": false, "reason": "resource_mismatch" }
+    },
+    {
+      "id": "source-evidence/rejects-subject-mismatch",
+      "spec": "§8.3",
+      "description": "A source statement for the right repository but wrong revision does not apply.",
+      "inputs": {
+        "mode": "trusted_issuer",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "dddddddddddddddddddddddddddddddddddddddd" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": false, "reason": "subject_mismatch" }
+    },
+    {
+      "id": "source-evidence/rejects-disallowed-digest",
+      "spec": "§8.3",
+      "description": "Digest algorithms are profile-bound; an otherwise matching statement using an unauthorized subject digest fails closed.",
+      "inputs": {
+        "mode": "trusted_issuer",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "ffffffffffffffffffffffffffffffffffffffff" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "sha1": "ffffffffffffffffffffffffffffffffffffffff" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": false, "reason": "digest_algorithm_disallowed" }
+    },
+    {
+      "id": "source-evidence/rejects-unauthorized-issuer",
+      "spec": "§8.3",
+      "description": "A signed summary from an issuer outside the source-evidence trust roots is not authority.",
+      "inputs": {
+        "mode": "trusted_issuer",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "1111111111111111111111111111111111111111" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:mallory",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "1111111111111111111111111111111111111111" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": false, "reason": "unauthorized_issuer" }
+    },
+    {
+      "id": "source-evidence/rejects-unreplayed-evidence-in-replay-mode",
+      "spec": "§8.3",
+      "description": "Replay mode cannot accept an unreplayed summary, even if the issuer is trusted for other modes.",
+      "inputs": {
+        "mode": "replay",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "2222222222222222222222222222222222222222" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "2222222222222222222222222222222222222222" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": false, "reason": "replay_required" }
+    },
+    {
+      "id": "source-evidence/rejects-stale-evidence",
+      "spec": "§8.3",
+      "description": "When the profile requires freshness, stale source evidence cannot support a current release decision.",
+      "inputs": {
+        "mode": "trusted_issuer",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "3333333333333333333333333333333333333333" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "3333333333333333333333333333333333333333" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": false,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": false, "reason": "stale_evidence" }
+    },
+    {
+      "id": "source-evidence/rejects-hidden-demotion",
+      "spec": "§8.3",
+      "description": "A current-state proof showing a hidden demotion prevents accepting an older favorable source statement.",
+      "inputs": {
+        "mode": "trusted_issuer",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "4444444444444444444444444444444444444444" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "4444444444444444444444444444444444444444" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": ["source-demotion:1"] }
+      },
+      "expected": { "accepted": false, "reason": "hidden_demotion" }
+    },
+    {
+      "id": "source-evidence/rejects-equivocation",
+      "spec": "§8.3",
+      "description": "Conflicting accepted statements for the same repository, revision, profile, and instant are equivocation.",
+      "inputs": {
+        "mode": "trusted_issuer",
+        "repository": "git+https://github.com/acme/auth",
+        "release_to": { "gitCommit": "5555555555555555555555555555555555555555" },
+        "allowed_digest_algorithms": ["gitCommit"],
+        "trusted_issuers": ["scs:github:acme"],
+        "evidence": [
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "5555555555555555555555555555555555555555" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_3"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          },
+          {
+            "issuer": "scs:github:acme",
+            "resourceUri": "git+https://github.com/acme/auth",
+            "subject": { "gitCommit": "5555555555555555555555555555555555555555" },
+            "verifiedLevels": ["SLSA_SOURCE_LEVEL_1"],
+            "sourceRefs": ["refs/heads/main"],
+            "fresh": true,
+            "replayed": false
+          }
+        ],
+        "current_state": { "hidden_demotions": [] }
+      },
+      "expected": { "accepted": false, "reason": "equivocation" }
+    }
+  ]
+}
