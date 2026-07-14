@@ -1,0 +1,572 @@
+{
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "spec_version": "0.10",
+  "description": "Release-interval and predecessor-continuity vectors for SemVer-Trust §5.2 and §10 (ADR-027). Commit arrays are oldest-first topological fixtures; expected.commits asserts interval membership in fixture order.",
+  "vectors": [
+    {
+      "id": "range/inception/includes-root",
+      "kind": "release_range",
+      "description": "Inception is Reach(TO), including the root rather than literal root..TO.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "inception",
+        "to": "c",
+        "existing_chain_heads": 0,
+        "requested_from": null,
+        "boundary": null,
+        "predecessor": null,
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] },
+          { "id": "c", "parents": ["b"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verified",
+        "commits": ["root", "a", "b", "c"],
+        "reason": null
+      }
+    },
+    {
+      "id": "range/inception/includes-all-reachable-roots",
+      "kind": "release_range",
+      "description": "A first release includes both roots of a merged unrelated history.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "inception",
+        "to": "to",
+        "existing_chain_heads": 0,
+        "requested_from": null,
+        "boundary": null,
+        "predecessor": null,
+        "commits": [
+          { "id": "root-a", "parents": [] },
+          { "id": "a", "parents": ["root-a"] },
+          { "id": "root-b", "parents": [] },
+          { "id": "b", "parents": ["root-b"] },
+          { "id": "merge", "parents": ["a", "b"] },
+          { "id": "to", "parents": ["merge"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verified",
+        "commits": ["root-a", "a", "root-b", "b", "merge", "to"],
+        "reason": null
+      }
+    },
+    {
+      "id": "range/inception/rejects-existing-chain",
+      "kind": "release_range",
+      "description": "A producer cannot restart at inception after an accepted chain head exists.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "inception",
+        "to": "b",
+        "existing_chain_heads": 1,
+        "requested_from": null,
+        "boundary": null,
+        "predecessor": null,
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "predecessor_required"
+      }
+    },
+    {
+      "id": "range/adoption/includes-boundary-excludes-parent-history",
+      "kind": "release_range",
+      "description": "Adoption includes the boundary commit and excludes all history reachable through its parents.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "adoption",
+        "to": "to",
+        "existing_chain_heads": 0,
+        "requested_from": null,
+        "boundary": { "oid": "boundary", "ref_target": "boundary", "bootstrap_pinned": true },
+        "predecessor": null,
+        "commits": [
+          { "id": "old-a", "parents": [] },
+          { "id": "old-b", "parents": ["old-a"] },
+          { "id": "old-side", "parents": [] },
+          { "id": "boundary", "parents": ["old-b", "old-side"] },
+          { "id": "new", "parents": ["boundary"] },
+          { "id": "to", "parents": ["new"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verified",
+        "commits": ["boundary", "new", "to"],
+        "reason": null
+      }
+    },
+    {
+      "id": "range/adoption/rejects-unpinned-boundary",
+      "kind": "release_range",
+      "description": "The candidate policy or caller cannot select an unpinned adoption boundary.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "adoption",
+        "to": "b",
+        "existing_chain_heads": 0,
+        "requested_from": null,
+        "boundary": { "oid": "a", "ref_target": "a", "bootstrap_pinned": false },
+        "predecessor": null,
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "boundary_not_bootstrap_pinned"
+      }
+    },
+    {
+      "id": "range/adoption/rejects-moved-boundary-ref",
+      "kind": "release_range",
+      "description": "A boundary ref that no longer resolves to its pinned object aborts.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "adoption",
+        "to": "c",
+        "existing_chain_heads": 0,
+        "requested_from": null,
+        "boundary": { "oid": "a", "ref_target": "b", "bootstrap_pinned": true },
+        "predecessor": null,
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] },
+          { "id": "c", "parents": ["b"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "boundary_ref_moved"
+      }
+    },
+    {
+      "id": "range/adoption/rejects-non-reachable-boundary",
+      "kind": "release_range",
+      "description": "An adoption boundary outside TO's reachable history is invalid.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "adoption",
+        "to": "b",
+        "existing_chain_heads": 0,
+        "requested_from": null,
+        "boundary": { "oid": "other", "ref_target": "other", "bootstrap_pinned": true },
+        "predecessor": null,
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] },
+          { "id": "other", "parents": [] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "boundary_not_reachable"
+      }
+    },
+    {
+      "id": "range/recurring/uses-accepted-predecessor",
+      "kind": "release_range",
+      "description": "A recurring interval excludes the accepted predecessor and its ancestors.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "d",
+        "existing_chain_heads": 1,
+        "requested_from": "b",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": true,
+          "repository": "https://example.test/acme/repo",
+          "component": "app",
+          "to": "b",
+          "tag_target": "b"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] },
+          { "id": "c", "parents": ["b"] },
+          { "id": "d", "parents": ["c"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verified",
+        "commits": ["c", "d"],
+        "reason": null
+      }
+    },
+    {
+      "id": "range/recurring/includes-newly-reachable-root",
+      "kind": "release_range",
+      "description": "Unrelated history merged after the predecessor is included in full.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "to",
+        "existing_chain_heads": 1,
+        "requested_from": "previous",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": true,
+          "repository": "https://example.test/acme/repo",
+          "component": "app",
+          "to": "previous",
+          "tag_target": "previous"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "previous", "parents": ["root"] },
+          { "id": "new-root", "parents": [] },
+          { "id": "new-side", "parents": ["new-root"] },
+          { "id": "merge", "parents": ["previous", "new-side"] },
+          { "id": "to", "parents": ["merge"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verified",
+        "commits": ["new-root", "new-side", "merge", "to"],
+        "reason": null
+      }
+    },
+    {
+      "id": "range/recurring/rejects-missing-predecessor",
+      "kind": "release_range",
+      "description": "Recurring verification cannot fall back to a caller-selected FROM.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "b",
+        "existing_chain_heads": 1,
+        "requested_from": "a",
+        "boundary": null,
+        "predecessor": null,
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "predecessor_missing"
+      }
+    },
+    {
+      "id": "range/recurring/rejects-unaccepted-predecessor",
+      "kind": "release_range",
+      "description": "A signed-looking but unaccepted predecessor is not chain authority.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "b",
+        "existing_chain_heads": 1,
+        "requested_from": "a",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": false,
+          "chain_head": true,
+          "repository": "https://example.test/acme/repo",
+          "component": "app",
+          "to": "a",
+          "tag_target": "a"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "predecessor_not_accepted"
+      }
+    },
+    {
+      "id": "range/recurring/rejects-ambiguous-chain-head",
+      "kind": "release_range",
+      "description": "A predecessor that is not the unique accepted head cannot anchor recurrence.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "b",
+        "existing_chain_heads": 2,
+        "requested_from": "a",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": false,
+          "repository": "https://example.test/acme/repo",
+          "component": "app",
+          "to": "a",
+          "tag_target": "a"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "predecessor_not_unique_head"
+      }
+    },
+    {
+      "id": "range/recurring/rejects-repository-mismatch",
+      "kind": "release_range",
+      "description": "A predecessor from another repository cannot be replayed into this chain.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "b",
+        "existing_chain_heads": 1,
+        "requested_from": "a",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": true,
+          "repository": "https://example.test/other/repo",
+          "component": "app",
+          "to": "a",
+          "tag_target": "a"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "predecessor_repository_mismatch"
+      }
+    },
+    {
+      "id": "range/recurring/rejects-component-mismatch",
+      "kind": "release_range",
+      "description": "Component release chains are independent even inside one repository.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "b",
+        "existing_chain_heads": 1,
+        "requested_from": "a",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": true,
+          "repository": "https://example.test/acme/repo",
+          "component": "library",
+          "to": "a",
+          "tag_target": "a"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "predecessor_component_mismatch"
+      }
+    },
+    {
+      "id": "range/recurring/rejects-non-ancestor-predecessor",
+      "kind": "release_range",
+      "description": "History divergence or rewrite that makes P a non-ancestor aborts.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "b",
+        "existing_chain_heads": 1,
+        "requested_from": "other",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": true,
+          "repository": "https://example.test/acme/repo",
+          "component": "app",
+          "to": "other",
+          "tag_target": "other"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] },
+          { "id": "other", "parents": [] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "predecessor_not_ancestor"
+      }
+    },
+    {
+      "id": "range/recurring/rejects-moved-predecessor-tag",
+      "kind": "release_range",
+      "description": "The predecessor tag must still resolve to the attested object ID.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "c",
+        "existing_chain_heads": 1,
+        "requested_from": "a",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": true,
+          "repository": "https://example.test/acme/repo",
+          "component": "app",
+          "to": "a",
+          "tag_target": "b"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] },
+          { "id": "c", "parents": ["b"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "predecessor_ref_moved"
+      }
+    },
+    {
+      "id": "range/recurring/rejects-caller-selected-skip",
+      "kind": "release_range",
+      "description": "A requested FROM after the accepted predecessor cannot skip commits.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "d",
+        "existing_chain_heads": 1,
+        "requested_from": "c",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": true,
+          "repository": "https://example.test/acme/repo",
+          "component": "app",
+          "to": "a",
+          "tag_target": "a"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] },
+          { "id": "b", "parents": ["a"] },
+          { "id": "c", "parents": ["b"] },
+          { "id": "d", "parents": ["c"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "from_not_predecessor"
+      }
+    },
+    {
+      "id": "range/recurring/same-to-is-promotion",
+      "kind": "release_range",
+      "description": "TO equal to predecessor TO is a promotion/supersession, not a new source interval.",
+      "spec": "§5.2",
+      "inputs": {
+        "repository": "https://example.test/acme/repo",
+        "component": "app",
+        "mode": "recurring",
+        "to": "a",
+        "existing_chain_heads": 1,
+        "requested_from": "a",
+        "boundary": null,
+        "predecessor": {
+          "attestation": "sha256:previous",
+          "accepted": true,
+          "chain_head": true,
+          "repository": "https://example.test/acme/repo",
+          "component": "app",
+          "to": "a",
+          "tag_target": "a"
+        },
+        "commits": [
+          { "id": "root", "parents": [] },
+          { "id": "a", "parents": ["root"] }
+        ]
+      },
+      "expected": {
+        "outcome": "verification_failed",
+        "commits": [],
+        "reason": "promotion_required"
+      }
+    }
+  ]
+}
