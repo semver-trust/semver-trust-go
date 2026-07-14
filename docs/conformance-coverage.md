@@ -9,9 +9,10 @@ draft version of the vendored vectors — currently **v0.10**.
 A single draft version pins the *provenance* of the vendored vectors; it is not
 a claim that every v0.10 protocol capability is implemented. The spec's draft
 v0.10 introduced the audit-hardening model (ADR-027 through ADR-035) as several
-large new vector suites. This table states exactly which suites the
-implementation **enforces** (loads and passes) versus which remain **pending**
-while the model is adopted incrementally (tracked in
+large new vector suites. This table states which suites the implementation
+**enforces** (loads and passes). Every vendored suite is now enforced; the
+remaining work is wiring these ported evaluators into the production verify
+pipeline (tracked in
 [semver-trust-go#76](https://github.com/semver-trust/semver-trust-go/issues/76)).
 
 | Suite | Spec area | Status |
@@ -30,7 +31,7 @@ while the model is adopted incrementally (tracked in
 | version-ancestry | §7.5 authenticated version state (ADR-029) | **enforced** |
 | source-evidence | §8.3 SLSA Source profiles (ADR-035) | **enforced** |
 | publishing-profile | §7.4 ecosystem routing (ADR-034) | **enforced** |
-| predicate-v0.2 | §8.1 release/v0.2 payload validation (ADR-030) | pending |
+| predicate-v0.2 | §8.1 release/v0.2 payload validation (ADR-030) | **enforced** |
 
 **What "review-qualification enforced" covers today:** the ADR-031 qualification
 logic (`trust.QualifyReview`) — approved-verdict, active-at-merge, final-revision
@@ -105,5 +106,17 @@ release semantics the v0.2 predicate carries (interval, policy-state,
 version-state); that lands with the range / policy-transition / version-ancestry
 suites above.
 
-Each pending suite is enforced by a dedicated PR under #76 that vendors the
-suite, adds its Go loader, implements the ADR behavior, and flips its row here.
+**What "predicate-v0.2 enforced" covers today:** the §8.1/ADR-030 release/v0.2
+and review/v0.2 predicate payloads validate against their vendored JSON Schemas
+through `attest.Verifier.ValidatePayload` — the schema half of `Verify`, exposed
+so a well-formed but schema-invalid payload can be exercised without a
+signature. Payloads flagged with a source-evidence extension are additionally
+checked for structural binding (`attest.SourceEvidenceExtensionBound`, §8.3/
+ADR-035): the extension's revision and resource must match the release's own
+interval and repository, and its mode/profile/issuer-roots/evidence/freshness
+must be populated. This is payload-shape validation; the production emit/verify
+paths still center on release/v0.1.
+
+Every vendored suite is now enforced. What remains is **production wiring** —
+feeding these ported evaluators from the live verify pipeline rather than the
+abstract conformance facts they are exercised against today — tracked in #76.
