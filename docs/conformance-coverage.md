@@ -25,7 +25,7 @@ while the model is adopted incrementally (tracked in
 | signature | §4.2 / §10 commit-signature verification | **enforced** |
 | attestation | §8.2 DSSE verify (v0.1 in production; v0.1/v0.2 **schema** validation in the conformance harness) | **enforced** |
 | review-qualification | §4.3 qualified review + canonical actors (ADR-031) | **enforced** |
-| range | §5.2 exact release intervals (ADR-027) | pending |
+| range | §5.2 exact release intervals (ADR-027) | **enforced** |
 | policy-transition | §5.4 bootstrap + policy transitions (ADR-028) | pending |
 | version-ancestry | §7.5 authenticated version state (ADR-029) | pending |
 | source-evidence | §8.3 SLSA Source profiles (ADR-035) | pending |
@@ -39,6 +39,15 @@ implemented and passes the suite. The **production** verify path still consumes
 review/v0.1 attestations, where the verdict half is already enforced (#78) and
 distinctness uses raw signer identity; migrating it to build the qualified facts
 from review/v0.2 predicates and the policy actor map is tracked in #76.
+
+**What "range enforced" covers today:** the §5.2/ADR-027 interval-selection
+logic (`vcs.SelectInterval`) — inception, adoption (bootstrap-pinned boundary,
+included, parent history excluded), and recurring (anchored to the accepted
+predecessor chain head), with every caller-selected / skipped / moved /
+mismatched abort — is implemented and passes the suite over abstract commit
+graphs. The **production** verify path still uses the existing two-dot range
+walk; feeding `SelectInterval` real git reachability and accepted-predecessor
+attestations is tracked in #76.
 
 **What "attestation enforced" covers today:** the `attest.Verifier` is generic —
 it verifies signatures against the injected attestation-signer registry and
