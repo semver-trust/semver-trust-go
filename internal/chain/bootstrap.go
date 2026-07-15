@@ -140,10 +140,15 @@ func (d *BootstrapDescriptor) validate() error {
 			return fmt.Errorf("bootstrap descriptor: trust_material[%q] digest %q is not sha256:<64-hex>", path, digest)
 		}
 	}
-	// The version predecessor, when present, must be null, a rejected-ambiguous
-	// list, or a well-formed binding — never anything else.
-	if _, _, _, _, err := d.versionPredecessor(); err != nil {
+	// Genesis binds exactly one version-predecessor choice — an explicit null,
+	// a rejected ambiguous list, or a well-formed binding. An omitted field is
+	// not a valid selection: null genesis is never inferred (§7.5/ADR-029).
+	present, _, _, _, err := d.versionPredecessor()
+	if err != nil {
 		return err
+	}
+	if !present {
+		return fmt.Errorf("bootstrap descriptor: version_predecessor is required — bind an explicit null, a binding, or an ambiguous list; genesis never infers a null version line (§7.5/ADR-029)")
 	}
 	return nil
 }
@@ -198,12 +203,15 @@ func (d *BootstrapDescriptor) VersionBootstrap() version.VersionBootstrap {
 
 // pathInside reports whether descriptorPath resolves to a location within
 // repoPath's tree (so it would be a candidate-repository copy, not out-of-band).
+// Both paths are canonicalized through EvalSymlinks first, so a symlink outside
+// the repository that resolves back into it cannot slip past the guard and feed
+// repository-controlled bytes.
 func pathInside(descriptorPath, repoPath string) (bool, error) {
-	dAbs, err := filepath.Abs(descriptorPath)
+	dAbs, err := canonicalPath(descriptorPath)
 	if err != nil {
 		return false, err
 	}
-	rAbs, err := filepath.Abs(repoPath)
+	rAbs, err := canonicalPath(repoPath)
 	if err != nil {
 		return false, err
 	}
@@ -213,4 +221,14 @@ func pathInside(descriptorPath, repoPath string) (bool, error) {
 		return false, nil //nolint:nilerr // an unrelatable path is simply not inside
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)), nil
+}
+
+// canonicalPath resolves p to an absolute, symlink-free path. The descriptor
+// must exist (it is about to be read), so an unresolvable path is a load error.
+func canonicalPath(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
 }
