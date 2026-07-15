@@ -4,12 +4,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/semver-trust/semver-trust-go/conformance"
 	"github.com/semver-trust/semver-trust-go/internal/attest"
 	"github.com/semver-trust/semver-trust-go/internal/verify"
 )
@@ -202,5 +204,130 @@ func TestAttestReviewErrors(t *testing.T) {
 				t.Error("command succeeded, want error")
 			}
 		})
+	}
+}
+
+// attest review --predicate v0.2 emits the qualified-review successor predicate
+// (ADR-030/ADR-031): the envelope carries a review/v0.2 statement that
+// validates against the vendored schema and round-trips the canonical actor —
+// the surface M4-PR3's verify path will consume.
+func TestAttestReviewV02Command(t *testing.T) {
+	repo := filepath.Join(buildFixtures(t), "release")
+	envelopePath := filepath.Join(t.TempDir(), "review-v02.dsse.json")
+
+	out, err := runCommand(t,
+		"attest", "review",
+		"--repo", repo,
+		"--predicate", "v0.2",
+		"--commits", "main",
+		"--reviewer", "bob@semver-trust.test",
+		"--reviewer-actor", "actor:human:bob",
+		"--reviewer-actor-digest", "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		"--repository-id", "repo:semver-trust.test/release",
+		"--repository-digest", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"--source-to-result-digest", "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+		"--pr", "pull-request:3",
+		"--key", bobKeyPath(t),
+		"--timestamp", "2026-01-01T00:00:00Z",
+		"--store=false",
+		"--out", envelopePath,
+	)
+	if err != nil {
+		t.Fatalf("attest review --predicate v0.2: %v", err)
+	}
+	for _, want := range []string{
+		"predicate " + attest.PredicateReviewV02,
+		"actor:    actor:human:bob",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("confirmation output missing %q:\n%s", want, out)
+		}
+	}
+
+	envBytes, err := os.ReadFile(envelopePath)
+	if err != nil {
+		t.Fatalf("--out file: %v", err)
+	}
+	var env attest.Envelope
+	if err := json.Unmarshal(envBytes, &env); err != nil {
+		t.Fatalf("--out envelope: %v", err)
+	}
+	payload, err := base64.StdEncoding.DecodeString(env.Payload)
+	if err != nil {
+		t.Fatalf("decoding envelope payload: %v", err)
+	}
+
+	v02Schema, err := conformance.Vector("schemas/review-v0.2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := attest.NewVerifier(nil, map[string][]byte{attest.PredicateReviewV02: v02Schema})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifier.ValidatePayload(payload); err != nil {
+		t.Fatalf("emitted payload does not validate against vendored review-v0.2 schema: %v", err)
+	}
+
+	var stmt struct {
+		PredicateType string `json:"predicateType"`
+		Predicate     struct {
+			Reviewers []struct {
+				Actor struct {
+					ID string `json:"id"`
+				} `json:"actor"`
+				Coverage string `json:"coverage"`
+			} `json:"reviewers"`
+		} `json:"predicate"`
+	}
+	if err := json.Unmarshal(payload, &stmt); err != nil {
+		t.Fatal(err)
+	}
+	if stmt.PredicateType != attest.PredicateReviewV02 {
+		t.Errorf("predicateType = %q, want %q", stmt.PredicateType, attest.PredicateReviewV02)
+	}
+	if len(stmt.Predicate.Reviewers) != 1 ||
+		stmt.Predicate.Reviewers[0].Actor.ID != "actor:human:bob" ||
+		stmt.Predicate.Reviewers[0].Coverage != "final_revision" {
+		t.Errorf("reviewer = %+v, want the canonical actor:human:bob at final_revision coverage", stmt.Predicate.Reviewers)
+	}
+}
+
+// --predicate v0.2 fails fast, before signing, when the required canonical-actor
+// / repository / digest facts are absent.
+func TestAttestReviewV02RequiresFlags(t *testing.T) {
+	repo := filepath.Join(buildFixtures(t), "release")
+	_, err := runCommand(t,
+		"attest", "review",
+		"--repo", repo,
+		"--predicate", "v0.2",
+		"--commits", "main",
+		"--reviewer", "bob@semver-trust.test",
+		"--pr", "pull-request:3",
+		"--key", bobKeyPath(t),
+		"--timestamp", "2026-01-01T00:00:00Z",
+	)
+	if err == nil {
+		t.Fatal("v0.2 emit succeeded without the required actor/repository/digest flags")
+	}
+	if !strings.Contains(err.Error(), "--predicate v0.2 requires") {
+		t.Errorf("error = %v, want the v0.2 required-flags message", err)
+	}
+}
+
+// An unknown --predicate value is refused.
+func TestAttestReviewUnknownPredicate(t *testing.T) {
+	repo := filepath.Join(buildFixtures(t), "release")
+	_, err := runCommand(t,
+		"attest", "review",
+		"--repo", repo,
+		"--predicate", "v9",
+		"--commits", "main",
+		"--reviewer", "bob@semver-trust.test",
+		"--pr", "1",
+		"--key", bobKeyPath(t),
+	)
+	if err == nil || !strings.Contains(err.Error(), "--predicate") {
+		t.Errorf("error = %v, want an unknown-predicate refusal", err)
 	}
 }
