@@ -60,10 +60,11 @@ type BootstrapDescriptor struct {
 	TrustRoles          map[string]string   `json:"trust_roles"`
 	MandatoryMetaPaths  []string            `json:"mandatory_meta_paths"`
 
-	// VersionPredecessor carries the §7.5 four-way shape: absent (field
-	// omitted) means the genesis has no version predecessor to declare, an
-	// explicit null pins a null predecessor, a list is a rejected ambiguous
-	// selection, and an object is the binding the version line continues from.
+	// VersionPredecessor carries the §7.5 selection, which genesis MUST bind
+	// explicitly — an omitted field is rejected in validate, since null genesis
+	// is never inferred. An explicit null starts a new version line, a list is a
+	// rejected ambiguous selection, and an object is the binding the version
+	// line continues from.
 	VersionPredecessor json.RawMessage `json:"version_predecessor"`
 
 	// authenticated records that this descriptor was supplied and validated
