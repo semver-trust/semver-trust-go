@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/semver-trust/semver-trust-go/internal/policy"
 	"github.com/semver-trust/semver-trust-go/internal/vcs"
 	"github.com/semver-trust/semver-trust-go/internal/version"
 )
@@ -191,6 +192,32 @@ func (d *BootstrapDescriptor) IntervalBoundary() *vcs.BoundaryDescriptor {
 		OID:             d.Boundary.OID,
 		RefTarget:       d.Boundary.RefTarget,
 		BootstrapPinned: true,
+	}
+}
+
+// PolicyBootstrap maps the descriptor to the §5.4/ADR-028 policy-transition
+// bootstrap authority (policy.BootstrapDescriptor) the SelectPolicyTransition
+// evaluator consumes. The interval mode is the transition's range mode, and the
+// boundary is reduced to its OID (the *string the transition compares).
+func (d *BootstrapDescriptor) PolicyBootstrap() policy.BootstrapDescriptor {
+	var boundary *string
+	if d.Boundary != nil {
+		oid := d.Boundary.OID
+		boundary = &oid
+	}
+	return policy.BootstrapDescriptor{
+		Authenticated:       d.authenticated,
+		Repository:          d.Repository,
+		Component:           d.Component,
+		RangeMode:           d.IntervalMode,
+		Boundary:            boundary,
+		VerificationProfile: d.VerificationProfile,
+		ClockProfile:        d.ClockProfile,
+		PolicyPath:          d.PolicyPath,
+		PolicyDigest:        d.PolicyDigest,
+		TrustMaterial:       d.TrustMaterial,
+		TrustRoles:          d.TrustRoles,
+		MandatoryMetaPaths:  d.MandatoryMetaPaths,
 	}
 }
 

@@ -69,6 +69,7 @@ type Options struct {
 const (
 	stepLoadPolicy  = "§10 step 1 (load policy)"
 	stepMetaPath    = "§10 step 1 (§5.4 meta-path level)"
+	stepTransition  = "§10 step 1 (§5.4 policy transition)"
 	stepEnumerate   = "§10 step 2 (enumerate commits)"
 	stepSignature   = "§10 step 3 (verify signature)"
 	stepAttestation = "§10 step 3 (verify review attestation)"
@@ -293,6 +294,13 @@ func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 				"bootstrap descriptor component %q does not match the verified component %q (§5.4 subject binding)",
 				opts.Bootstrap.Component, comp.Name))
 		}
+		// The genesis policy and its trust material are authenticated against
+		// the out-of-band descriptor (§5.4/ADR-028), not trusted for being in
+		// TO's tree. Runs here, after classification, because the guardrails
+		// consult per-commit levels/signers.
+		if err := checkPolicyTransition(opts, pol, report); err != nil {
+			return nil, err
+		}
 	}
 
 	// ---- §10 step 7: collect evidence, compute the semantic floor. ---------
@@ -313,6 +321,49 @@ func targetComponentEffective(report *Report) (ComponentEffective, bool) {
 		}
 	}
 	return ComponentEffective{}, false
+}
+
+// checkPolicyTransition runs the §5.4/ADR-028 policy transition for a v0.10
+// genesis release: the policy at TO is both the active and the candidate (the
+// bootstrap authority governs the first interval as a fixed point), and the
+// out-of-band descriptor's policy facts — path, digest, digest-pinned trust
+// material, roles, subject, range mode, boundary, profiles — must all match it.
+// The per-commit guardrails (unknown_active_signer, under_level_meta_commit) run
+// against the classified interval. Genesis only; the recurring predecessor
+// authority defers to #76 M6.
+func checkPolicyTransition(opts Options, pol *policy.Policy, report *Report) error {
+	desc := opts.Bootstrap
+	active, err := MetaPolicyFromTree(pol, opts.PolicyPath, opts.RepoPath, opts.To)
+	if err != nil {
+		return abort(stepTransition, err)
+	}
+	commits := make([]policy.TransitionCommit, 0, len(report.Commits))
+	for _, c := range report.Commits {
+		commits = append(commits, policy.TransitionCommit{Signer: c.Signer, Level: c.Level, Paths: c.Paths})
+	}
+	var boundary *string
+	if desc.Boundary != nil {
+		oid := desc.Boundary.OID
+		boundary = &oid
+	}
+	in := policy.TransitionInputs{
+		Repository:            desc.Repository,
+		Component:             desc.Component,
+		Authority:             "bootstrap",
+		RangeMode:             desc.IntervalMode,
+		Boundary:              boundary,
+		VerificationProfile:   desc.VerificationProfile,
+		ClockProfile:          desc.ClockProfile,
+		VerificationTime:      report.VerifyTime, // RFC3339 Z (verifyWith)
+		ProvidedTrustMaterial: active.TrustMaterial,
+		Commits:               commits,
+	}
+	bootstrap := desc.PolicyBootstrap()
+	if _, _, reason := policy.SelectPolicyTransition(active, active, &bootstrap, nil, in); reason != "" {
+		return abort(stepTransition, fmt.Errorf(
+			"authenticated policy transition refused (%s, §5.4/ADR-028)", reason))
+	}
+	return nil
 }
 
 // enumerateInterval selects the §5.2/ADR-027 exact release interval from the
