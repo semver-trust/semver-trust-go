@@ -3,6 +3,7 @@
 package policy
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -63,6 +64,34 @@ func TestParseActorMap(t *testing.T) {
 			t.Errorf("ResolveActor(%q) = (%q,%q,%v), want (%q,%q,%v)",
 				c.identity, id, class, ok, c.wantActor, c.wantClass, c.wantResolved)
 		}
+	}
+}
+
+// TestActorMapRoundTrip pins the marshal contract for the new vocabulary:
+// Parse(Marshal(p)) must round-trip the canonical-actor map, or a normalize/
+// edit/emit pass through Marshal would silently drop it and disable qualified
+// review. Map iteration order is nondeterministic, so compare parsed policies
+// rather than raw TOML bytes (like TestRoundTrip).
+func TestActorMapRoundTrip(t *testing.T) {
+	p1, err := Parse([]byte(actorPolicy))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	out, err := p1.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	p2, err := Parse(out)
+	if err != nil {
+		t.Fatalf("Parse(Marshal(p)): %v\nmarshalled:\n%s", err, out)
+	}
+	if len(p2.Identity.Actors) != 2 {
+		t.Fatalf("Actors after round-trip = %v, want alice + review-bot\nmarshalled:\n%s", p2.Identity.Actors, out)
+	}
+	p1.Digest, p2.Digest = "", ""
+	if !reflect.DeepEqual(p1.Identity.Actors, p2.Identity.Actors) {
+		t.Errorf("actor-map round-trip mismatch:\nfirst  %+v\nsecond %+v\nmarshalled:\n%s",
+			p1.Identity.Actors, p2.Identity.Actors, out)
 	}
 }
 
