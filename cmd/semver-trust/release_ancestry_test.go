@@ -9,21 +9,64 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/semver-trust/semver-trust-go/internal/policy"
+	"github.com/semver-trust/semver-trust-go/internal/verify"
 )
 
-// adoptionPolicy is the ADR-026 single-maintainer policy used by the ancestry
-// repo: T2 threshold, demote, boundary at v0-import.
+// adoptionPolicy is the single-maintainer policy used by the ancestry repo: T2
+// threshold, demote. In v0.10 mode the adoption boundary is a descriptor fact
+// (ADR-028 supersedes the ADR-026 policy adoption_boundary), so the policy does
+// not declare one. It declares in-tree trust material so the §5.4 policy
+// transition can digest-pin it (M3).
 const adoptionPolicy = `# semver-trust TEST POLICY - version-ancestry adoption repo
 [policy]
 version   = "0.1"
 threshold = "T2"
 strategy  = "demote"
-adoption_boundary = "v0-import"
 
 [meta]
 paths          = [".semver-trust/**"]
 required_level = "T2"
+
+[identity.human]
+allowed_signers = ".semver-trust/allowed_signers"
 `
+
+// commitFilesSignedCLI writes several files and commits them in one SSH-signed
+// commit — the boundary/adopting commit carries both the policy and its in-tree
+// trust material.
+func commitFilesSignedCLI(t *testing.T, repo, keys, key, identity string, files map[string]string, message string) {
+	t.Helper()
+	for file, content := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, file)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, file), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitCLI(t, repo, "add", file)
+	}
+	gitCLI(t, repo,
+		"-c", "user.name="+strings.SplitN(identity, "@", 2)[0],
+		"-c", "user.email="+identity,
+		"-c", "gpg.format=ssh",
+		"-c", "user.signingkey="+filepath.Join(keys, key),
+		"-c", "commit.gpgsign=true",
+		"commit", "--quiet", "-m", message)
+}
+
+// treeAllowedSigners is the vendored allowed-signers registry committed in-tree
+// so the policy's identity.human.allowed_signers resolves from TO's tree and the
+// transition can digest-pin it.
+func treeAllowedSigners(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(allowedSignersPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
 
 // buildAdoptionAncestryRepo builds a legacy repo that adopts the scheme:
 //
@@ -49,11 +92,13 @@ func buildAdoptionAncestryRepo(t *testing.T) (repo, legacyCommit, boundaryCommit
 	gitCLI(t, repo, "tag", "v1.4.0")
 	legacyCommit = gitOut(t, repo, "rev-parse", "v1.4.0")
 
-	// The boundary IS the adopting commit — alice-signed, carrying the trust
-	// material, so under ADR-027 it is included in the interval and itself
-	// verifies (earliest verifiable commit, not last legacy release).
-	commitSignedCLI(t, repo, keys, "human-alice", "alice@semver-trust.test",
-		".semver-trust/policy.toml", adoptionPolicy, "feat: adopt semver-trust (ADR-026)\n\nProvenance: human")
+	// The boundary IS the adopting commit — alice-signed, carrying the policy
+	// and its in-tree trust registry, so under ADR-027 it is included in the
+	// interval and itself verifies (earliest verifiable commit).
+	commitFilesSignedCLI(t, repo, keys, "human-alice", "alice@semver-trust.test", map[string]string{
+		".semver-trust/policy.toml":     adoptionPolicy,
+		".semver-trust/allowed_signers": treeAllowedSigners(t),
+	}, "feat: adopt semver-trust (ADR-026)\n\nProvenance: human")
 	gitCLI(t, repo, "tag", "v0-import")
 	boundaryCommit = gitOut(t, repo, "rev-parse", "v0-import")
 
@@ -81,39 +126,11 @@ func gitOut(t *testing.T, repo string, args ...string) string {
 // boundary release no longer restarts the line.
 func TestReleaseVersionAncestryContinuesLine(t *testing.T) {
 	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
-
-	descriptor := map[string]any{
-		"repository": "repo:test/widget",
-		// The descriptor component MUST be the released/attested component: this
-		// single-component repo scopes to "default", so the version authority and
-		// the emitted predicate bind the same component chain (§5.4).
-		"component":     "default",
-		"interval_mode": "adoption",
-		"boundary":      map[string]any{"oid": boundaryCommit, "ref_target": boundaryCommit},
-		"tag_prefix":    "",
-		"policy_path":   ".semver-trust/policy.toml",
-		// The version evaluator does not check the policy digest (that is the
-		// policy-transition milestone); a format-valid placeholder suffices here.
-		"policy_digest":        "sha256:" + strings.Repeat("a", 64),
-		"verification_profile": "vp",
-		"clock_profile":        "cp",
-		"version_predecessor": map[string]any{
-			"tag": "v1.4.0", "ref_oid": legacyCommit, "commit_oid": legacyCommit,
-		},
-	}
-	descPath := filepath.Join(t.TempDir(), "bootstrap.json") // out-of-band: not inside repo
-	data, err := json.Marshal(descriptor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(descPath, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	descPath := writeDescriptorFile(t, adoptionDescriptor(t, repo, boundaryCommit, boundaryCommit, legacyCommit))
 
 	out, err := runCommand(t, "release",
 		"--repo", repo,
 		"--to", "main",
-		"--allowed-signers", allowedSignersPath(t),
 		"--bootstrap-descriptor", descPath,
 		"--claimed-bump", "minor",
 		"--blast", "low",
@@ -170,23 +187,9 @@ func TestReleaseVersionAncestryContinuesLine(t *testing.T) {
 // version ancestry (§7.5), never taken from --iteration.
 func TestReleaseVersionAncestryRejectsIterationOverride(t *testing.T) {
 	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
-	descriptor := map[string]any{
-		"repository": "repo:test/widget", "component": "default",
-		"interval_mode":        "adoption",
-		"boundary":             map[string]any{"oid": boundaryCommit, "ref_target": boundaryCommit},
-		"policy_path":          ".semver-trust/policy.toml",
-		"policy_digest":        "sha256:" + strings.Repeat("a", 64),
-		"verification_profile": "vp", "clock_profile": "cp",
-		"version_predecessor": map[string]any{"tag": "v1.4.0", "ref_oid": legacyCommit, "commit_oid": legacyCommit},
-	}
-	descPath := filepath.Join(t.TempDir(), "bootstrap.json")
-	data, _ := json.Marshal(descriptor)
-	if err := os.WriteFile(descPath, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	descPath := writeDescriptorFile(t, adoptionDescriptor(t, repo, boundaryCommit, boundaryCommit, legacyCommit))
 	out, err := runCommand(t, "release",
 		"--repo", repo, "--to", "main",
-		"--allowed-signers", allowedSignersPath(t),
 		"--bootstrap-descriptor", descPath,
 		"--claimed-bump", "minor", "--blast", "low",
 		"--iteration", "9",
@@ -210,7 +213,6 @@ func TestReleaseVersionAncestryRejectsInRepoDescriptor(t *testing.T) {
 	}
 	out, err := runCommand(t, "release",
 		"--repo", repo, "--to", "main",
-		"--allowed-signers", allowedSignersPath(t),
 		"--bootstrap-descriptor", inRepo,
 		"--claimed-bump", "minor", "--blast", "low",
 		"--verify-time", releaseEpoch, "--dry-run", "--json")
@@ -231,11 +233,14 @@ strategy  = "demote"
 [meta]
 paths          = [".semver-trust/**"]
 required_level = "T2"
+
+[identity.human]
+allowed_signers = ".semver-trust/allowed_signers"
 `
 
 // buildInceptionRepo is a greenfield repo adopting the scheme from inception:
-// alice's founding policy commit plus a feature commit, no legacy history and no
-// boundary.
+// alice's founding policy + in-tree trust registry commit plus a feature commit,
+// no legacy history and no boundary.
 func buildInceptionRepo(t *testing.T) string {
 	t.Helper()
 	keys := stageVendoredKeys(t)
@@ -243,24 +248,65 @@ func buildInceptionRepo(t *testing.T) string {
 	if out, err := exec.Command("git", "-c", "init.defaultBranch=main", "init", "--quiet", "--object-format=sha1", repo).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	commitSignedCLI(t, repo, keys, "human-alice", "alice@semver-trust.test",
-		".semver-trust/policy.toml", inceptionPolicy, "feat: adopt semver-trust\n\nProvenance: human")
+	commitFilesSignedCLI(t, repo, keys, "human-alice", "alice@semver-trust.test", map[string]string{
+		".semver-trust/policy.toml":     inceptionPolicy,
+		".semver-trust/allowed_signers": treeAllowedSigners(t),
+	}, "feat: adopt semver-trust\n\nProvenance: human")
 	commitSignedCLI(t, repo, keys, "human-alice", "alice@semver-trust.test",
 		"widget.go", "package widget\n", "feat: widget core\n\nProvenance: human")
 	return repo
 }
 
+// policyFacts derives the authenticated policy facts (§5.4) a bootstrap
+// descriptor must pin — the sha256:-prefixed policy digest and the digest-pinned
+// trust material / roles — from TO's tree via the same producer the verifier
+// uses, so the descriptor authenticates by construction.
+func policyFacts(t *testing.T, repo, policyTOML string) (digest string, material, roles map[string]string) {
+	t.Helper()
+	pol, err := policy.Parse([]byte(policyTOML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mp, err := verify.MetaPolicyFromTree(pol, ".semver-trust/policy.toml", repo, "main")
+	if err != nil {
+		t.Fatalf("MetaPolicyFromTree: %v", err)
+	}
+	return mp.Digest, mp.TrustMaterial, mp.TrustRoles
+}
+
 // adoptionDescriptor builds an adoption bootstrap descriptor pinning the given
-// boundary (oid/ref_target) and version predecessor commit.
-func adoptionDescriptor(boundaryOID, boundaryRefTarget, predecessorCommit string) map[string]any {
+// boundary (oid/ref_target), version predecessor, and the repo's authenticated
+// policy facts.
+func adoptionDescriptor(t *testing.T, repo, boundaryOID, boundaryRefTarget, predecessorCommit string) map[string]any {
+	t.Helper()
+	digest, material, roles := policyFacts(t, repo, adoptionPolicy)
 	return map[string]any{
 		"repository": "repo:test/widget", "component": "default",
 		"interval_mode":        "adoption",
 		"boundary":             map[string]any{"oid": boundaryOID, "ref_target": boundaryRefTarget},
 		"policy_path":          ".semver-trust/policy.toml",
-		"policy_digest":        "sha256:" + strings.Repeat("a", 64),
+		"policy_digest":        digest,
+		"trust_material":       material,
+		"trust_roles":          roles,
 		"verification_profile": "vp", "clock_profile": "cp",
 		"version_predecessor": map[string]any{"tag": "v1.4.0", "ref_oid": predecessorCommit, "commit_oid": predecessorCommit},
+	}
+}
+
+// inceptionDescriptor builds an inception bootstrap descriptor (no boundary, null
+// version predecessor) with the repo's authenticated policy facts.
+func inceptionDescriptor(t *testing.T, repo string) map[string]any {
+	t.Helper()
+	digest, material, roles := policyFacts(t, repo, inceptionPolicy)
+	return map[string]any{
+		"repository": "repo:test/widget", "component": "default",
+		"interval_mode":        "inception",
+		"policy_path":          ".semver-trust/policy.toml",
+		"policy_digest":        digest,
+		"trust_material":       material,
+		"trust_roles":          roles,
+		"verification_profile": "vp", "clock_profile": "cp",
+		"version_predecessor": nil,
 	}
 }
 
@@ -284,17 +330,9 @@ func writeDescriptorFile(t *testing.T, descriptor map[string]any) string {
 // reachable history (root..TO) and the version line starts fresh at v0.1.0.
 func TestReleaseVersionAncestryInception(t *testing.T) {
 	repo := buildInceptionRepo(t)
-	descPath := writeDescriptorFile(t, map[string]any{
-		"repository": "repo:test/widget", "component": "default",
-		"interval_mode":        "inception",
-		"policy_path":          ".semver-trust/policy.toml",
-		"policy_digest":        "sha256:" + strings.Repeat("a", 64),
-		"verification_profile": "vp", "clock_profile": "cp",
-		"version_predecessor": nil, // explicit null: a new version line
-	})
+	descPath := writeDescriptorFile(t, inceptionDescriptor(t, repo))
 	out, err := runCommand(t, "release",
 		"--repo", repo, "--to", "main",
-		"--allowed-signers", allowedSignersPath(t),
 		"--bootstrap-descriptor", descPath,
 		"--claimed-bump", "minor", "--blast", "low",
 		"--verify-time", releaseEpoch, "--dry-run", "--json")
@@ -321,10 +359,9 @@ func TestReleaseVersionAncestryInception(t *testing.T) {
 // caller-anchored (SelectInterval returns untrusted_from).
 func TestReleaseVersionAncestryRejectsCallerFrom(t *testing.T) {
 	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
-	descPath := writeDescriptorFile(t, adoptionDescriptor(boundaryCommit, boundaryCommit, legacyCommit))
+	descPath := writeDescriptorFile(t, adoptionDescriptor(t, repo, boundaryCommit, boundaryCommit, legacyCommit))
 	out, err := runCommand(t, "release",
 		"--repo", repo, "--to", "main",
-		"--allowed-signers", allowedSignersPath(t),
 		"--bootstrap-descriptor", descPath,
 		"--from", "v0-import",
 		"--claimed-bump", "minor", "--blast", "low",
@@ -342,10 +379,9 @@ func TestReleaseVersionAncestryRejectsCallerFrom(t *testing.T) {
 func TestReleaseVersionAncestryRejectsMovedBoundary(t *testing.T) {
 	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
 	// ref_target != oid: the pinned boundary ref has moved.
-	descPath := writeDescriptorFile(t, adoptionDescriptor(boundaryCommit, legacyCommit, legacyCommit))
+	descPath := writeDescriptorFile(t, adoptionDescriptor(t, repo, boundaryCommit, legacyCommit, legacyCommit))
 	out, err := runCommand(t, "release",
 		"--repo", repo, "--to", "main",
-		"--allowed-signers", allowedSignersPath(t),
 		"--bootstrap-descriptor", descPath,
 		"--claimed-bump", "minor", "--blast", "low",
 		"--verify-time", releaseEpoch, "--dry-run", "--json")
@@ -363,12 +399,11 @@ func TestReleaseVersionAncestryRejectsMovedBoundary(t *testing.T) {
 // refused.
 func TestVerifyVersionAncestryRejectsComponentMismatch(t *testing.T) {
 	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
-	desc := adoptionDescriptor(boundaryCommit, boundaryCommit, legacyCommit)
+	desc := adoptionDescriptor(t, repo, boundaryCommit, boundaryCommit, legacyCommit)
 	desc["component"] = "other" // the repo's actual component is "default"
 	descPath := writeDescriptorFile(t, desc)
 	out, err := runCommand(t, "verify",
 		"--repo", repo, "--to", "main",
-		"--allowed-signers", allowedSignersPath(t),
 		"--bootstrap-descriptor", descPath,
 		"--verify-time", releaseEpoch, "--json")
 	if err == nil {
@@ -376,5 +411,71 @@ func TestVerifyVersionAncestryRejectsComponentMismatch(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "subject binding") {
 		t.Errorf("error = %v, want a §5.4 subject-binding rejection", err)
+	}
+}
+
+// TestReleaseVersionAncestryRejectsPolicyDigestMismatch: the descriptor's pinned
+// policy digest must equal TO's policy (§5.4/ADR-028), or the genesis policy is
+// not authenticated.
+func TestReleaseVersionAncestryRejectsPolicyDigestMismatch(t *testing.T) {
+	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
+	desc := adoptionDescriptor(t, repo, boundaryCommit, boundaryCommit, legacyCommit)
+	desc["policy_digest"] = "sha256:" + strings.Repeat("b", 64) // does not match TO's policy
+	descPath := writeDescriptorFile(t, desc)
+	out, err := runCommand(t, "release",
+		"--repo", repo, "--to", "main",
+		"--bootstrap-descriptor", descPath,
+		"--claimed-bump", "minor", "--blast", "low",
+		"--verify-time", releaseEpoch, "--dry-run", "--json")
+	if err == nil {
+		t.Fatalf("expected refusal for a mismatched policy digest, got:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "bootstrap_policy_mismatch") {
+		t.Errorf("error = %v, want bootstrap_policy_mismatch", err)
+	}
+}
+
+// TestReleaseVersionAncestryRejectsTrustMaterialMismatch: the descriptor's pinned
+// trust-material digests must match the bytes in TO's tree.
+func TestReleaseVersionAncestryRejectsTrustMaterialMismatch(t *testing.T) {
+	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
+	desc := adoptionDescriptor(t, repo, boundaryCommit, boundaryCommit, legacyCommit)
+	material := desc["trust_material"].(map[string]string)
+	for k := range material {
+		material[k] = "sha256:" + strings.Repeat("c", 64) // corrupt the pinned digest
+	}
+	descPath := writeDescriptorFile(t, desc)
+	out, err := runCommand(t, "release",
+		"--repo", repo, "--to", "main",
+		"--bootstrap-descriptor", descPath,
+		"--claimed-bump", "minor", "--blast", "low",
+		"--verify-time", releaseEpoch, "--dry-run", "--json")
+	if err == nil {
+		t.Fatalf("expected refusal for mismatched trust-material digests, got:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "bootstrap_trust_material_mismatch") {
+		t.Errorf("error = %v, want bootstrap_trust_material_mismatch", err)
+	}
+}
+
+// TestVerifyVersionAncestryRejectsTrustMaterialOverride closes the go#97 bypass:
+// in v0.10 mode a filesystem --allowed-signers override would let unpinned
+// material verify commits while the transition only checks the descriptor-pinned
+// tree bytes (key substitution under an authorized principal). The override is
+// refused fail-fast, so the material used for verification IS what the descriptor
+// pins.
+func TestVerifyVersionAncestryRejectsTrustMaterialOverride(t *testing.T) {
+	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
+	descPath := writeDescriptorFile(t, adoptionDescriptor(t, repo, boundaryCommit, boundaryCommit, legacyCommit))
+	out, err := runCommand(t, "verify",
+		"--repo", repo, "--to", "main",
+		"--bootstrap-descriptor", descPath,
+		"--allowed-signers", allowedSignersPath(t),
+		"--verify-time", releaseEpoch, "--json")
+	if err == nil {
+		t.Fatalf("expected verify to reject a trust-material override in v0.10 mode, got:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "overrides the descriptor-pinned trust material") {
+		t.Errorf("error = %v, want a trust-material override rejection", err)
 	}
 }
