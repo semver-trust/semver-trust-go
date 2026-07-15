@@ -101,6 +101,12 @@ prints the would-be tag and attestation without writing anything.`,
 			if err != nil {
 				return fmt.Errorf("--blast: %w", err)
 			}
+			// In v0.10 mode the iteration is authenticated by the version
+			// ancestry (§7.5); a caller-selected iteration override is refused
+			// (§10 forbids caller-selected protocol state).
+			if bootstrapDescriptor != "" && cmd.Flags().Changed("iteration") {
+				return errors.New("release refused: --iteration is not consulted with --bootstrap-descriptor; the iteration is authenticated by the version ancestry (§7.5/ADR-029)")
+			}
 
 			// Signing material resolves before any evaluation so a missing
 			// key fails fast, not after a half-done pipeline. --dry-run
@@ -154,7 +160,12 @@ prints the would-be tag and attestation without writing anything.`,
 				if lerr != nil {
 					return fmt.Errorf("release refused: %w", lerr)
 				}
-				decision, comp, versionPredecessor, err = decideReleaseAncestry(report, desc, repoPath, component, claimed, blastScore)
+				decision, comp, versionPredecessor, iteration, err = decideReleaseAncestry(report, desc, repoPath, claimed, blastScore)
+				if err == nil {
+					// Bind the emitted predicate's component to the version
+					// authority: the descriptor is the component of record.
+					component = desc.Component
+				}
 			} else {
 				decision, comp, err = decideRelease(report, from, component, claimed, blastScore, iteration)
 			}
@@ -371,16 +382,20 @@ func currentVersion(from, component string) (version.Version, error) {
 // predecessor tag (nil for a descriptor-declared new line). --from and
 // --iteration are not consulted: the descriptor is the version authority, and a
 // genesis iteration is authenticated (always 1).
-func decideReleaseAncestry(report *verify.Report, desc *chain.BootstrapDescriptor, repoPath, component string, claimed evidence.Bump, blast trust.Blast) (trust.Decision, verify.ComponentEffective, *string, error) {
-	fail := func(err error) (trust.Decision, verify.ComponentEffective, *string, error) {
-		return trust.Decision{}, verify.ComponentEffective{}, nil, err
-	}
-	if component != "" && component != desc.Component {
-		return fail(fmt.Errorf("release refused: --component %q conflicts with the bootstrap descriptor component %q", component, desc.Component))
+func decideReleaseAncestry(report *verify.Report, desc *chain.BootstrapDescriptor, repoPath string, claimed evidence.Bump, blast trust.Blast) (trust.Decision, verify.ComponentEffective, *string, uint64, error) {
+	fail := func(err error) (trust.Decision, verify.ComponentEffective, *string, uint64, error) {
+		return trust.Decision{}, verify.ComponentEffective{}, nil, 0, err
 	}
 	comp, err := targetEffective(report)
 	if err != nil {
 		return fail(err)
+	}
+	// The descriptor is the component authority: its component MUST be the
+	// component actually released and attested (the propagation target), so the
+	// authenticated version line and the emitted release predicate bind the same
+	// component chain (§5.4 subject binding).
+	if desc.Component != comp.Name {
+		return fail(fmt.Errorf("release refused: bootstrap descriptor component %q does not match the released component %q (§5.4 subject binding)", desc.Component, comp.Name))
 	}
 
 	nodes, err := vcs.CommitGraph(repoPath, report.ToCommit)
@@ -448,7 +463,14 @@ func decideReleaseAncestry(report *verify.Report, desc *chain.BootstrapDescripto
 	if floor, ferr := evidence.ParseBump(report.Evidence.SemanticFloor); ferr == nil && floor > bump {
 		bump = floor
 	}
-	return trust.Decision{Channel: channel, Bump: bump, Version: ver}, comp, result.VersionPredecessor, nil
+	// The iteration is authenticated by the ancestry result, never the --iteration
+	// flag (rejected in v0.10 mode): a prerelease carries the computed iteration, a
+	// clean cut has none — reported as the vestigial 1, matching a clean v0.3 cut.
+	iteration := uint64(1)
+	if result.Iteration != nil {
+		iteration = uint64(*result.Iteration)
+	}
+	return trust.Decision{Channel: channel, Bump: bump, Version: ver}, comp, result.VersionPredecessor, iteration, nil
 }
 
 // releaseStatementInput maps the verify report and the decision onto the

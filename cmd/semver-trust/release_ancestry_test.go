@@ -76,8 +76,11 @@ func TestReleaseVersionAncestryContinuesLine(t *testing.T) {
 	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
 
 	descriptor := map[string]any{
-		"repository":    "repo:test/widget",
-		"component":     "widget",
+		"repository": "repo:test/widget",
+		// The descriptor component MUST be the released/attested component: this
+		// single-component repo scopes to "default", so the version authority and
+		// the emitted predicate bind the same component chain (§5.4).
+		"component":     "default",
 		"interval_mode": "adoption",
 		"boundary":      map[string]any{"oid": boundaryCommit, "ref_target": boundaryCommit},
 		"tag_prefix":    "",
@@ -129,6 +132,50 @@ func TestReleaseVersionAncestryContinuesLine(t *testing.T) {
 	}
 	if result.VersionPredecessor == nil || *result.VersionPredecessor != "v1.4.0" {
 		t.Errorf("version_predecessor = %v, want the authenticated v1.4.0", result.VersionPredecessor)
+	}
+
+	// The version authority and the emitted predicate must bind the same
+	// component chain: descriptor component "default" == predicate component.
+	var stmt releasePayloadJSON
+	if err := json.Unmarshal(result.Statement, &stmt); err != nil {
+		t.Fatal(err)
+	}
+	if stmt.Predicate.Component != "default" {
+		t.Errorf("predicate component = %q, want %q (the descriptor's component)", stmt.Predicate.Component, "default")
+	}
+}
+
+// TestReleaseVersionAncestryRejectsIterationOverride confirms a caller-selected
+// iteration is refused in v0.10 mode: the iteration is authenticated by the
+// version ancestry (§7.5), never taken from --iteration.
+func TestReleaseVersionAncestryRejectsIterationOverride(t *testing.T) {
+	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
+	descriptor := map[string]any{
+		"repository": "repo:test/widget", "component": "default",
+		"interval_mode":        "adoption",
+		"boundary":             map[string]any{"oid": boundaryCommit, "ref_target": boundaryCommit},
+		"policy_path":          ".semver-trust/policy.toml",
+		"policy_digest":        "sha256:" + strings.Repeat("a", 64),
+		"verification_profile": "vp", "clock_profile": "cp",
+		"version_predecessor": map[string]any{"tag": "v1.4.0", "ref_oid": legacyCommit, "commit_oid": legacyCommit},
+	}
+	descPath := filepath.Join(t.TempDir(), "bootstrap.json")
+	data, _ := json.Marshal(descriptor)
+	if err := os.WriteFile(descPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCommand(t, "release",
+		"--repo", repo, "--to", "main",
+		"--allowed-signers", allowedSignersPath(t),
+		"--bootstrap-descriptor", descPath,
+		"--claimed-bump", "minor", "--blast", "low",
+		"--iteration", "9",
+		"--verify-time", releaseEpoch, "--dry-run", "--json")
+	if err == nil {
+		t.Fatalf("expected refusal for --iteration in v0.10 mode, got success:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "iteration") {
+		t.Errorf("error = %v, want an iteration-override rejection", err)
 	}
 }
 
