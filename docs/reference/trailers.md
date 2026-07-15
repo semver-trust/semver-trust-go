@@ -29,13 +29,14 @@ Provenance-Model: <model-identifier>      (optional)
   change (an agent draft substantially edited by a human, or the reverse).
   `Provenance-Agent` is required here too.
 
-A complete agent block, as this repository's own history carries on most
-commits:
+A complete agent block names the tool, its version, and — optionally — the
+model actually in use. Substitute the real values; these are placeholders, not
+literals to copy (a fictional model line is still mis-provenance):
 
 ```text
 Provenance: agent
-Provenance-Agent: claude-code/2.8
-Provenance-Model: claude-fable-5
+Provenance-Agent: claude-code/<version>
+Provenance-Model: <model-id>
 ```
 
 Two rules from the spec worth internalizing:

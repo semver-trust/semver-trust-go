@@ -120,8 +120,8 @@ git add widget.go && git commit -m "feat: widget core" -m "Provenance: human"
 
 echo 'package widget // v2' > widget.go
 git add widget.go && git commit -m "feat: widget frobnicator" -m "Provenance: agent
-Provenance-Agent: claude-code/2.8
-Provenance-Model: claude-fable-5"
+Provenance-Agent: claude-code/<version>
+Provenance-Model: <model-id>"
 ```
 
 Run `verify` whenever you like — it's read-only and fast. `--from ''` means

@@ -55,8 +55,8 @@ Compose the message with the block inline, or attach it with `--trailer`:
 ```sh
 git commit -m "feat: parse adoption boundary" \
   -m "Provenance: agent
-Provenance-Agent: claude-code/2.8
-Provenance-Model: claude-fable-5"
+Provenance-Agent: claude-code/<version>
+Provenance-Model: <model-id>"
 ```
 
 If you authored a commit and the block is missing or wrong, fix it **before**
