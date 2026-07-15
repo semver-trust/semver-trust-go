@@ -356,3 +356,25 @@ func TestReleaseVersionAncestryRejectsMovedBoundary(t *testing.T) {
 		t.Errorf("error = %v, want boundary_ref_moved", err)
 	}
 }
+
+// TestVerifyVersionAncestryRejectsComponentMismatch confirms the §5.4 subject
+// binding is enforced in the standalone verify command too (not only the release
+// decision path): a descriptor whose component is not the verified component is
+// refused.
+func TestVerifyVersionAncestryRejectsComponentMismatch(t *testing.T) {
+	repo, legacyCommit, boundaryCommit := buildAdoptionAncestryRepo(t)
+	desc := adoptionDescriptor(boundaryCommit, boundaryCommit, legacyCommit)
+	desc["component"] = "other" // the repo's actual component is "default"
+	descPath := writeDescriptorFile(t, desc)
+	out, err := runCommand(t, "verify",
+		"--repo", repo, "--to", "main",
+		"--allowed-signers", allowedSignersPath(t),
+		"--bootstrap-descriptor", descPath,
+		"--verify-time", releaseEpoch, "--json")
+	if err == nil {
+		t.Fatalf("expected verify to reject a component-mismatched descriptor, got:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "subject binding") {
+		t.Errorf("error = %v, want a §5.4 subject-binding rejection", err)
+	}
+}

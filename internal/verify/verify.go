@@ -277,6 +277,24 @@ func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 		return nil, err
 	}
 
+	// v0.10 subject binding (§5.4): the authenticated descriptor's component
+	// MUST be the component actually verified and reported (the propagation
+	// target), so the interval authority and the report bind the same component
+	// chain. Enforced here — once the target is known — for verify and release
+	// alike, not only in the release decision path.
+	if opts.Bootstrap != nil {
+		comp, ok := targetComponentEffective(report)
+		if !ok {
+			return nil, abort(stepEnumerate, fmt.Errorf(
+				"propagation target %q is not a resolved component", report.Propagation.Target))
+		}
+		if opts.Bootstrap.Component != comp.Name {
+			return nil, abort(stepEnumerate, fmt.Errorf(
+				"bootstrap descriptor component %q does not match the verified component %q (§5.4 subject binding)",
+				opts.Bootstrap.Component, comp.Name))
+		}
+	}
+
 	// ---- §10 step 7: collect evidence, compute the semantic floor. ---------
 	report.Evidence, err = collectEvidence(repo, opts, pol, commits)
 	if err != nil {
@@ -284,6 +302,17 @@ func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 	}
 
 	return report, nil
+}
+
+// targetComponentEffective returns the propagation row of the headline target
+// component and whether it was present in the propagation output.
+func targetComponentEffective(report *Report) (ComponentEffective, bool) {
+	for _, c := range report.Propagation.Components {
+		if c.Name == report.Propagation.Target {
+			return c, true
+		}
+	}
+	return ComponentEffective{}, false
 }
 
 // enumerateInterval selects the §5.2/ADR-027 exact release interval from the
