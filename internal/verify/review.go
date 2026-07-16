@@ -233,7 +233,7 @@ func reviewQualification(stmt attest.Statement, pol *policy.Policy, sha, authorI
 	r := rp.Predicate.Reviewers[0]
 	m := rp.Predicate.Merge
 
-	credentialActor, _, ok := pol.ResolveActor(stmt.Signer)
+	credentialActor, credentialClass, ok := pol.ResolveActor(stmt.Signer)
 	if !ok {
 		return nil, "", fmt.Errorf(
 			"review/v0.2 signing credential %q maps to no canonical actor (§4.2 [identity.actor.*]); fail closed",
@@ -246,8 +246,15 @@ func reviewQualification(stmt attest.Statement, pol *policy.Policy, sha, authorI
 			authorIdentity)
 	}
 
+	// The reviewer class comes from TRUSTED POLICY MATERIAL — the class of the
+	// actor the verified signing credential maps to — never the self-asserted
+	// wire reviewers[].class / actor.class. Otherwise a policy-declared agent
+	// actor could present itself as human and take human-review credit,
+	// bypassing the §3.3 agent-independence gates. QualifyReview enforces
+	// CredentialActor == ReviewerActor, so this is the class of the reviewer's
+	// own actor. The wire class is left unconsumed (it cannot grant credit).
 	class := trust.IdentityHuman
-	if r.Class == "agent" {
+	if credentialClass == "agent" {
 		class = trust.IdentityAgent
 	}
 	approvedRevision := ""

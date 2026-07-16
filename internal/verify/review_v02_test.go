@@ -59,6 +59,28 @@ class       = "human"
 credentials = ["alice@semver-trust.test", "bob@semver-trust.test"]
 `
 
+// agentReviewerPolicy declares bob's credential as an AGENT actor. A review it
+// signs cannot take human-review credit no matter what class the wire predicate
+// claims — the class is trusted policy material.
+const agentReviewerPolicy = `
+[policy]
+version   = "0.1"
+threshold = "T2"
+strategy  = "demote"
+
+[meta]
+paths          = [".semver-trust/**"]
+required_level = "T2"
+
+[identity.actor.alice]
+class       = "human"
+credentials = ["alice@semver-trust.test"]
+
+[identity.actor.review-bot]
+class       = "agent"
+credentials = ["bob@semver-trust.test"]
+`
+
 // unmappedReviewerPolicy maps only alice; bob's review credential resolves to no
 // actor.
 const unmappedReviewerPolicy = `
@@ -233,6 +255,34 @@ func TestReviewV02UnmappedCredentialAborts(t *testing.T) {
 	}
 }
 
+// Privilege-escalation regression: a policy-declared AGENT actor signs a review
+// whose wire predicate claims human class. The class must come from trusted
+// policy material, so the review takes the agent-independence path — with no
+// separate execution context it does not qualify, and the human author's commit
+// stays T2 (it must NOT be lifted to T3 as a distinct human reviewer).
+func TestReviewV02AgentActorCannotClaimHuman(t *testing.T) {
+	repo, sha := buildActorMapRepo(t, agentReviewerPolicy)
+
+	// bob's key is a policy AGENT actor (review-bot); the payload lies with
+	// class "human". The signing credential — not the wire — is authoritative.
+	emission := emitReviewV02Signed(t, "human-bob", "review-bot", sha, "commit:"+sha)
+	if _, err := attest.StoreForSubjects(attest.GitRefStore{Path: repo}, []string{sha}, emission.Envelope); err != nil {
+		t.Fatalf("storing envelope: %v", err)
+	}
+
+	report, err := verifyActorMapRepo(t, repo, ".semver-trust/policy.toml")
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	c := report.Commits[0]
+	if c.Level != "T2" || c.Review != "none" {
+		t.Errorf("commit = %s/%s, want T2/none (an agent actor cannot take human-review credit)", c.Level, c.Review)
+	}
+	if !strings.Contains(c.ReviewNote, "agent_not_independent") {
+		t.Errorf("ReviewNote = %q, want the agent-independence gate, not human credit", c.ReviewNote)
+	}
+}
+
 // reviewQualification unit tests: the wire→facts derivation, exercised without a
 // full repository.
 func TestReviewQualificationDerivation(t *testing.T) {
@@ -303,6 +353,47 @@ func TestReviewQualificationDerivation(t *testing.T) {
 	}
 	if !q2.PostApprovalChange {
 		t.Error("post_approval_change not derived when merge result != classified commit")
+	}
+}
+
+// reviewQualification derives ReviewerClass from the policy class of the
+// signing credential's actor, never the self-asserted wire class.
+func TestReviewQualificationClassIsPolicyNotWire(t *testing.T) {
+	pol, err := policy.Parse([]byte(agentReviewerPolicy))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	sha := strings.Repeat("c", 40)
+	commitRef := "commit:" + sha
+	payload, err := attest.BuildReviewV02Statement(attest.ReviewV02Input{
+		Subjects:        []string{sha},
+		Repository:      attest.ReviewV02Repository{ID: "repo:x", Digest: map[string]string{"sha256": strings.Repeat("a", 64)}},
+		Change:          "pull-request:1",
+		MergeContext:    "refs/heads/main",
+		SourceRevisions: []attest.ReviewRevision{{ID: commitRef}},
+		TargetRevision:  attest.ReviewRevision{ID: commitRef},
+		Reviewers: []attest.ReviewerV02{{
+			// The lie: a policy agent actor claiming human class in the wire.
+			ActorID: "review-bot", ActorClass: "human", ActorDigest: map[string]string{"sha256": strings.Repeat("1", 64)},
+			Credential: "review@x", Class: "human", Verdict: "approved", ApprovalState: "active",
+			Coverage: "final_revision", ApprovedRevision: &attest.ReviewRevision{ID: commitRef}, EffectiveAtMerge: true,
+		}},
+		MergeStrategy:  "merge",
+		CaptureMode:    "native",
+		ResultRevision: attest.ReviewRevision{ID: commitRef},
+		SourceToResult: map[string]string{"sha256": strings.Repeat("2", 64)},
+		Timestamp:      pinnedEpoch,
+	})
+	if err != nil {
+		t.Fatalf("BuildReviewV02Statement: %v", err)
+	}
+	stmt := attest.Statement{PredicateType: attest.PredicateReviewV02, Payload: payload, Signer: "bob@semver-trust.test"}
+	q, _, err := reviewQualification(stmt, pol, sha, "alice@semver-trust.test")
+	if err != nil {
+		t.Fatalf("reviewQualification: %v", err)
+	}
+	if q.ReviewerClass != trust.IdentityAgent {
+		t.Errorf("ReviewerClass = %v, want agent (policy class of the signing credential, not the wire's human claim)", q.ReviewerClass)
 	}
 }
 
