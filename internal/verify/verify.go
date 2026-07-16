@@ -224,17 +224,24 @@ func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 		}
 		signerClass := identityClass(pol, vs.Principal)
 
-		review, err := resolveReview(store, attVerifier, c.Hash, vs.Principal, at)
+		review, err := resolveReview(store, attVerifier, pol, c.Hash, vs.Principal, at)
 		if err != nil {
 			return nil, abort(stepAttestation, err)
 		}
 
-		authorship, reviewClass, level := trust.Classify(trust.CommitFacts{
+		authorship, reviewClass, level, qualifyReason := trust.ClassifyWithQualification(trust.CommitFacts{
 			Signer:           signerClass,
 			Provenance:       c.Trailers.Provenance(),
 			TrailersRequired: pol.TrailersRequired,
 			Review:           review.facts,
-		})
+		}, review.qual)
+
+		note := review.note
+		if qualifyReason != "" {
+			// A consumed review/v0.2 that verified but did not qualify names why,
+			// so the honest degradation is visible rather than silent.
+			note = "review/v0.2 did not qualify: " + qualifyReason
+		}
 
 		row := CommitReport{
 			SHA:         c.Hash,
@@ -248,10 +255,14 @@ func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 			Trailers:    trailersMap(c.Trailers),
 			Merge:       c.Merge,
 			Paths:       c.Paths,
-			ReviewNote:  review.note,
+			ReviewNote:  note,
 		}
 		if review.facts != nil {
 			row.ReviewIdentity = review.facts.ReviewerIdentity
+			row.ReviewAttestation = review.ref
+		}
+		if review.qual != nil {
+			row.ReviewIdentity = review.qual.ReviewerActor
 			row.ReviewAttestation = review.ref
 		}
 		tcommits = append(tcommits, trust.Commit{ID: c.Hash, Level: level, Paths: c.Paths})
@@ -533,9 +544,19 @@ func buildAttestationVerifier(opts Options, pol *policy.Policy, repo string) (*a
 	if err != nil {
 		return nil, err
 	}
+	// review/v0.2 is registered so a stored qualified-review attestation
+	// verifies (and is consumed via QualifyReview) instead of failing closed as
+	// an unsupported predicate. release/v0.2 is intentionally NOT registered
+	// here: it has no production consumer until M6, so a stored release/v0.2
+	// stays fail-closed rather than silently verifying-and-skipping.
+	reviewV02Schema, err := conformance.Vector("schemas/review-v0.2.json")
+	if err != nil {
+		return nil, err
+	}
 	return attest.NewVerifier(signers, map[string][]byte{
-		attest.PredicateRelease: releaseSchema,
-		attest.PredicateReview:  reviewSchema,
+		attest.PredicateRelease:   releaseSchema,
+		attest.PredicateReview:    reviewSchema,
+		attest.PredicateReviewV02: reviewV02Schema,
 	})
 }
 

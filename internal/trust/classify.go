@@ -89,11 +89,27 @@ type ReviewFacts struct {
 }
 
 // Classify derives the authorship and review classes from verified commit
-// facts and assigns the §3.2 level.
+// facts and assigns the §3.2 level, using the raw-identity review path.
 func Classify(f CommitFacts) (Authorship, Review, Level) {
+	a, r, l, _ := ClassifyWithQualification(f, nil)
+	return a, r, l
+}
+
+// ClassifyWithQualification is Classify with the ADR-031 qualified-review path.
+// When q is non-nil — the active policy declares a canonical-actor map and a
+// review/v0.2 attestation was consumed for this commit — the review class comes
+// from QualifyReview over canonical actors, and the fourth return names the
+// disqualification reason (empty when the review qualifies). When q is nil the
+// raw-identity classifyReview path runs unchanged (review/v0.1, or a policy with
+// no actor map), so the published v0.1-review chain is byte-for-byte preserved.
+func ClassifyWithQualification(f CommitFacts, q *ReviewQualification) (Authorship, Review, Level, string) {
 	a := classifyAuthorship(f)
+	if q != nil {
+		r, reason := QualifyReview(a, *q)
+		return a, r, AssignLevel(a, r), reason
+	}
 	r := classifyReview(a, f.Review)
-	return a, r, AssignLevel(a, r)
+	return a, r, AssignLevel(a, r), ""
 }
 
 // classifyAuthorship applies §3.2 note 1 and the §4.1 trailer rules. The
