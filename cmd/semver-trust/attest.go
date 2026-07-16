@@ -101,18 +101,6 @@ attestation namespace — in the registry verify is given via
 aborts the run.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// review/v0.2 emission ships ahead of consumption: the verify path
-			// registers only review-v0.1, and resolveReview verifies a stored
-			// envelope before dispatching on predicate type, so a stored v0.2
-			// review aborts every subsequent verify run over the covered commit
-			// (§10 step 3, unsupported predicate). Until M4 PR3 (#76) teaches
-			// verify to consume v0.2, refuse to store one in the repository —
-			// --out still captures the envelope. This guard is removed when
-			// consumption lands.
-			if predicate == "v0.2" && storeEnvelope {
-				return errors.New("--predicate v0.2: refusing to store a review/v0.2 envelope — the verify path does not consume v0.2 reviews yet (lands in #76 M4 PR3), and a stored v0.2 review would abort subsequent verify runs over the covered commits. Re-run with --store=false (use --out to capture the envelope)")
-			}
-
 			// The review timestamp is read once, here at the process boundary,
 			// and injected (ADR-018 keeps internal/* free of time.Now).
 			ts := time.Now().UTC()

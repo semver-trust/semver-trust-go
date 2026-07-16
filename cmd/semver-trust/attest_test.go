@@ -13,7 +13,6 @@ import (
 
 	"github.com/semver-trust/semver-trust-go/conformance"
 	"github.com/semver-trust/semver-trust-go/internal/attest"
-	"github.com/semver-trust/semver-trust-go/internal/vcs"
 	"github.com/semver-trust/semver-trust-go/internal/verify"
 )
 
@@ -294,15 +293,15 @@ func TestAttestReviewV02Command(t *testing.T) {
 	}
 }
 
-// The v0.2 emit path refuses repository storage until M4 PR3 wires v0.2
-// consumption into verify: a stored v0.2 review would abort every subsequent
-// verify run over the covered commit (unsupported predicate at §10 step 3). The
-// guard fires before signing, so no attestation ref is written and current
-// verify runs are not poisoned.
-func TestAttestReviewV02RefusesStore(t *testing.T) {
+// PR2 introduced a store guard as a stopgap because verify could not yet
+// consume review/v0.2; PR3 wires consumption, so the guard is gone and storing
+// is safe. A v0.2 review stored under a policy with no actor map is DECLINED
+// (honest degradation, ADR-031) rather than aborting the run — this is the
+// regression for PR2's poisoning hazard, now resolved by consumption.
+func TestAttestReviewV02StoredThenVerifiedNoAbort(t *testing.T) {
 	repo := filepath.Join(buildFixtures(t), "release")
 
-	_, err := runCommand(t,
+	if _, err := runCommand(t,
 		"attest", "review",
 		"--repo", repo,
 		"--predicate", "v0.2",
@@ -316,26 +315,24 @@ func TestAttestReviewV02RefusesStore(t *testing.T) {
 		"--pr", "pull-request:3",
 		"--key", bobKeyPath(t),
 		"--timestamp", "2026-01-01T00:00:00Z",
-		// no --store=false: the default store=true must be refused for v0.2.
-	)
-	if err == nil {
-		t.Fatal("v0.2 emit stored to the repository; want a refusal until consumption lands")
-	}
-	if !strings.Contains(err.Error(), "refusing to store a review/v0.2") {
-		t.Errorf("error = %v, want the v0.2 store-refusal message", err)
+	); err != nil {
+		t.Fatalf("attest review --predicate v0.2 (default store): %v", err)
 	}
 
-	// No attestation ref was written for the covered commit.
-	sha, err := vcs.ResolveCommit(repo, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	envs, err := attest.GitRefStore{Path: repo}.List(sha)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(envs) != 0 {
-		t.Errorf("attestation store holds %d envelopes for the covered commit, want none after a refused v0.2 store", len(envs))
+	// verify over the covered commit now completes — the stored v0.2 review no
+	// longer aborts the run (§10 step 3). The release fixture's policy declares
+	// no actor map, so the review is declined, not counted.
+	if _, err := runCommand(t,
+		"verify",
+		"--repo", repo,
+		"--from", "v0.1.0",
+		"--to", "main",
+		"--allowed-signers", allowedSignersPath(t),
+		"--attestation-signers", bobAttestationSigners(t),
+		"--verify-time", "2026-01-01T00:00:00Z",
+		"--json",
+	); err != nil {
+		t.Fatalf("verify over a commit with a stored v0.2 review aborted: %v", err)
 	}
 }
 
@@ -352,7 +349,6 @@ func TestAttestReviewV02RequiresFlags(t *testing.T) {
 		"--pr", "pull-request:3",
 		"--key", bobKeyPath(t),
 		"--timestamp", "2026-01-01T00:00:00Z",
-		"--store=false", // past the store guard, so the required-flags check is reached
 	)
 	if err == nil {
 		t.Fatal("v0.2 emit succeeded without the required actor/repository/digest flags")
