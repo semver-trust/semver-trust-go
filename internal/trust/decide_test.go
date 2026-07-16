@@ -140,7 +140,9 @@ func TestDecideHonestDegradation(t *testing.T) {
 	}{
 		{"T3/high patch claim", T3, BlastHigh, evidence.BumpPatch},
 		{"T2/moderate patch claim", T2, BlastModerate, evidence.BumpPatch},
-		{"T1/low any claim", T1, BlastLow, evidence.BumpMinor},
+		// (T1/low was a differ-for-any-claim cell pre-ADR-032; the whole T1 row
+		// is now unconditionally pre-release, so it is no longer differ-gated —
+		// TestDecisionCell / TestDecideThresholdOracleSurface cover it.)
 	}
 	for _, tt := range differRequired {
 		t.Run(tt.name, func(t *testing.T) {
@@ -227,8 +229,9 @@ func TestDecisionCell(t *testing.T) {
 		want  Cell
 	}{
 		{T0, BlastLow, CellPrerelease},
-		{T1, BlastLow, CellDifferAny},
+		{T1, BlastLow, CellPrerelease}, // ADR-032: the whole T1 row is pre-release
 		{T1, BlastModerate, CellPrerelease},
+		{T1, BlastHigh, CellPrerelease},
 		{T2, BlastLow, CellClean},
 		{T2, BlastModerate, CellDifferPatch},
 		{T2, BlastHigh, CellPrerelease},
@@ -292,8 +295,10 @@ func TestDecideThresholdGate(t *testing.T) {
 	}
 
 	// The gate is a floor, not an override: it can only demote a would-be-clean
-	// release, never promote a demoted one. T1/low is CellDifferAny; even with
-	// threshold T0 and a differ, it follows the table.
+	// release, never promote a table-demoted one. T1/low is CellPrerelease
+	// (ADR-032), so even with the no-op T0 threshold and a differ available it
+	// stays pre-release — the gate being satisfied does not lift a T1 release
+	// into the clean channel.
 	got, err := Decide(DecideInputs{
 		Effective: T1, Blast: BlastLow, Strategy: StrategyDemote, Threshold: T0,
 		DifferAvailable: true,
@@ -303,8 +308,8 @@ func TestDecideThresholdGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
-	if got.Channel != ChannelClean {
-		t.Errorf("T1/low with differ and T0 threshold = %s, want clean (the gate never promotes)", got.Channel)
+	if got.Channel != ChannelPrerelease {
+		t.Errorf("T1/low with differ and T0 threshold = %s, want prerelease (T1 is never baseline-clean; the gate never promotes)", got.Channel)
 	}
 
 	// The gate composes with the inflate strategy: below threshold escalates
@@ -320,5 +325,47 @@ func TestDecideThresholdGate(t *testing.T) {
 	}
 	if !got.Escalate || got.Channel != ChannelClean {
 		t.Errorf("below-threshold inflate = %+v, want escalate on the clean channel", got)
+	}
+}
+
+// TestDecideThresholdOracleSurface pins the ADR-032 §6.4 T1 row that the
+// vendored decision vectors cannot exercise: every vendored decision vector
+// uses threshold=T2, so belowThreshold demotes any T1-effective release
+// regardless of the table cell — the vectors never distinguish a clean T1 cell
+// from a pre-release one. A policy MAY lower threshold to T1 (§6.2), and there
+// the table cell alone decides. Under the pre-ADR-032 table (T1/low =
+// CellDifferAny) this run returned the clean channel, diverging from the oracle
+// _TABLE and the v0.10 version/ancestry.go table (both T1 = pre-release); this
+// test guards the reconciled all-pre-release T1 row.
+func TestDecideThresholdOracleSurface(t *testing.T) {
+	// The whole T1 row is pre-release in the §6.4 table.
+	for _, b := range []Blast{BlastLow, BlastModerate, BlastHigh} {
+		cell, err := DecisionCell(T1, b)
+		if err != nil {
+			t.Fatalf("DecisionCell(T1, %s): %v", b, err)
+		}
+		if cell != CellPrerelease {
+			t.Errorf("DecisionCell(T1, %s) = %s, want pre-release (ADR-032)", b, cell)
+		}
+	}
+
+	// A T1/low release at threshold=T1 (gate satisfied, effective == threshold)
+	// with a differ available: the threshold gate does not demote, so the table
+	// cell alone decides — and it is pre-release. This is the exact input the
+	// vendored vectors miss.
+	got, err := Decide(DecideInputs{
+		Effective: T1, Blast: BlastLow, Strategy: StrategyDemote, Threshold: T1,
+		DifferAvailable: true,
+		SemanticFloor:   evidence.BumpMinor, ClaimedBump: evidence.BumpMinor,
+		Current: mustParse(t, "v1.2.3"), Iteration: 1,
+	})
+	if err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	if got.Channel != ChannelPrerelease {
+		t.Errorf("T1/low at threshold=T1 with a differ = %s, want prerelease (§6.4 T1 row is never clean)", got.Channel)
+	}
+	if got.Version.String() != "v1.3.0-t1.1" {
+		t.Errorf("version = %s, want v1.3.0-t1.1 (minor bump, T1 trust suffix)", got.Version)
 	}
 }

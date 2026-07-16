@@ -98,7 +98,10 @@ func TestPolicyExplainPrintsDecisionTable(t *testing.T) {
 		"blast high",
 		"clean",
 		"differ proof (patch)",
-		"differ proof (any)",
+		// "differ proof (any)" is no longer a cell in the §6.4 default table
+		// (ADR-032: the whole T1 row is pre-release); it survives only in the
+		// cell-vocabulary legend, wrapped across a line so it is not a
+		// contiguous match here.
 		"pre-release",
 		"meta-paths:",
 		"derivations: openapi-server, gofmt",
