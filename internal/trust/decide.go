@@ -121,8 +121,11 @@ type Decision struct {
 
 // Cell is a §6.4 decision-table entry: the clean channel is available
 // unconditionally, conditioned on a differ proof for PATCH claims,
-// conditioned on a differ proof for any claim (the T1/low cell), or
-// unavailable.
+// conditioned on a differ proof for any claim, or unavailable. The
+// post-ADR-032 baseline table no longer places the "any claim" cell — the
+// whole T1 row is pre-release — but the variant is retained for non-default
+// policy tables, mirroring the oracle's cell vocabulary (which still handles
+// differ_any in its decision function though its _TABLE no longer emits it).
 type Cell uint8
 
 const (
@@ -153,7 +156,13 @@ func (c Cell) String() string {
 // rows T0-T3, columns low/moderate/high).
 var decisionTable = [4][3]Cell{
 	T0: {CellPrerelease, CellPrerelease, CellPrerelease},
-	T1: {CellDifferAny, CellPrerelease, CellPrerelease},
+	// The whole T1 row is pre-release (ADR-032, §6.4): before empirical
+	// validation of independent agent-review efficacy, T1 does not satisfy the
+	// portable baseline clean profile. (Pre-ADR-032 this was CellDifferAny at
+	// low blast; that cell only ever surfaced under a sub-T2 threshold, which
+	// the baseline gate demotes anyway — matched here to the oracle _TABLE and
+	// the v0.10 version/ancestry.go table so all three agree.)
+	T1: {CellPrerelease, CellPrerelease, CellPrerelease},
 	T2: {CellClean, CellDifferPatch, CellPrerelease},
 	T3: {CellClean, CellClean, CellDifferPatch},
 }
