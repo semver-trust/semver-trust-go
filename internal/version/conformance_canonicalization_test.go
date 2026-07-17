@@ -128,10 +128,13 @@ func TestStateDigestRejectsNonCanonicalInput(t *testing.T) {
 		A string
 	}
 	cases := map[string]map[string]any{
-		"top-level struct value":   {"x": notCanonical{B: "2", A: "1"}},
-		"nested struct in a slice": {"x": []any{map[string]any{"ok": "1"}, notCanonical{}}},
-		"float value":              {"x": 1.5},
-		"nested float in a map":    {"x": map[string]any{"y": 2.0}},
+		"top-level struct value":    {"x": notCanonical{B: "2", A: "1"}},
+		"nested struct in a slice":  {"x": []any{map[string]any{"ok": "1"}, notCanonical{}}},
+		"float value":               {"x": 1.5},
+		"nested float in a map":     {"x": map[string]any{"y": 2.0}},
+		"decimal json.Number":       {"x": json.Number("1.5")},
+		"exponent json.Number":      {"x": json.Number("1e3")},
+		"negative-zero json.Number": {"x": json.Number("-0")},
 	}
 	for name, state := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -144,7 +147,8 @@ func TestStateDigestRejectsNonCanonicalInput(t *testing.T) {
 	// The allowed domain still works: nested maps/slices, strings, ints,
 	// json.Number, bool, and nil.
 	ok := map[string]any{
-		"s": "x", "n": 3, "jn": json.Number("7"), "b": true, "nul": nil,
+		"s": "x", "n": 3, "jn": json.Number("7"), "neg": json.Number("-3"), "zero": json.Number("0"),
+		"b": true, "nul": nil,
 		"arr": []any{1, "two", map[string]any{"k": false}},
 	}
 	if _, err := StateDigest(ok); err != nil {

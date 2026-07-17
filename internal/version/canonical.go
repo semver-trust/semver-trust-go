@@ -8,7 +8,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 )
+
+// integerJSONNumber matches a JSON integer literal: 0 or an optionally negative
+// non-zero integer with no leading zero, no fraction, no exponent, and no -0.
+// The ADR-036 object domain is integer-only, and Go's float/decimal
+// serialization is not guaranteed JCS-canonical, so a json.Number outside this
+// grammar (e.g. "1.5", "1e3") must fail closed.
+var integerJSONNumber = regexp.MustCompile(`^(0|-?[1-9][0-9]*)$`)
 
 // This file implements the ADR-036 semver-trust-version-state-json v0.2 profile:
 // the carried-forward version state (§7.5/ADR-029) serialized with RFC 8785
@@ -52,9 +60,16 @@ func CanonicalizeState(state map[string]any) ([]byte, error) {
 // produced silently (structs, floats, pointers, typed maps, etc. all fail).
 func validateCanonical(v any) error {
 	switch x := v.(type) {
-	case nil, bool, string, json.Number,
+	case nil, bool, string,
 		int, int8, int16, int32, int64,
 		uint, uint8, uint16, uint32, uint64:
+		return nil
+	case json.Number:
+		if !integerJSONNumber.MatchString(string(x)) {
+			return fmt.Errorf(
+				"version: canonicalize state: json.Number %q is not an integer (the profile is integer-only; decimals and exponents are not JCS-canonical)",
+				string(x))
+		}
 		return nil
 	case map[string]any:
 		for k, val := range x {
