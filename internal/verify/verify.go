@@ -609,19 +609,23 @@ func buildAttestationVerifier(opts Options, pol *policy.Policy, repo string) (*a
 	if err != nil {
 		return nil, err
 	}
-	// review/v0.2 is registered so a stored qualified-review attestation
-	// verifies (and is consumed via QualifyReview) instead of failing closed as
-	// an unsupported predicate. release/v0.2 is intentionally NOT registered
-	// here: it has no production consumer until M6, so a stored release/v0.2
-	// stays fail-closed rather than silently verifying-and-skipping.
+	// review/v0.2 and release/v0.2 are registered so a stored v0.10 attestation
+	// verifies (the qualified review via QualifyReview; the release/v0.2 as the
+	// authenticated chain head #76 M6 emits) instead of failing closed as an
+	// unsupported predicate.
 	reviewV02Schema, err := conformance.Vector("schemas/review-v0.2.json")
 	if err != nil {
 		return nil, err
 	}
+	releaseV02Schema, err := conformance.Vector("schemas/release-v0.2.json")
+	if err != nil {
+		return nil, err
+	}
 	return attest.NewVerifier(signers, map[string][]byte{
-		attest.PredicateRelease:   releaseSchema,
-		attest.PredicateReview:    reviewSchema,
-		attest.PredicateReviewV02: reviewV02Schema,
+		attest.PredicateRelease:    releaseSchema,
+		attest.PredicateReview:     reviewSchema,
+		attest.PredicateReviewV02:  reviewV02Schema,
+		attest.PredicateReleaseV02: releaseV02Schema,
 	})
 }
 

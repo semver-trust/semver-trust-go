@@ -49,7 +49,9 @@ semver-trust release [flags]
       --iteration uint                trust-suffix iteration for a pre-release cut (§7.2 re-cuts increment it) (default 1)
       --json                          emit a structured JSON result instead of the human summary
       --policy string                 policy file path within TO's tree (default ".semver-trust/policy.toml")
+      --predicate string              release attestation predicate: v0.1 (default) or v0.2. v0.2 emits the §8.1/ADR-030 authenticated chain head and requires --bootstrap-descriptor and --repository-digest (default "v0.1")
       --repo string                   repository to release from (default ".")
+      --repository-digest string      canonical repository identity digest (<algo>:<hex>, §4.3) bound into a release/v0.2 attestation; required with --predicate v0.2
       --tag-key string                OpenSSH private key signing the tag (git namespace)
       --tagger-email string           tagger email; empty resolves git config user.email
       --tagger-name string            tagger name; empty resolves git config user.name
