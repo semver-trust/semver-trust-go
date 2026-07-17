@@ -18,16 +18,25 @@ import (
 // only serialize and digest whatever canonical object the caller supplies.
 
 // CanonicalizeState returns the RFC 8785 (JCS) serialization of a version-state
-// object. The object MUST be composed of maps, slices, strings, integers,
-// bools, and nil — NOT Go structs — because JCS orders object members
-// lexicographically and encoding/json sorts map keys but preserves struct-field
-// declaration order. For this object domain (ASCII keys/strings, integers,
-// bool, null, arrays, nested objects — no floats), a sorted-key, minimally
-// separated, non-HTML-escaping JSON encoding is byte-identical to JCS, which is
-// exactly what encoding/json produces with SetEscapeHTML(false); no JCS
-// dependency is required. The spec oracle (check-conformance.py) computes the
-// same bytes, and the vendored conformance vectors pin the resulting digests.
-func CanonicalizeState(state any) ([]byte, error) {
+// object. For this object domain (ASCII keys/strings, integers, bool, null,
+// arrays, nested objects — no floats), a sorted-key, minimally separated,
+// non-HTML-escaping JSON encoding is byte-identical to JCS, which is exactly
+// what encoding/json produces with SetEscapeHTML(false); no JCS dependency is
+// required. The spec oracle (check-conformance.py) computes the same bytes, and
+// the vendored conformance vectors pin the resulting digests.
+//
+// This is the digest boundary, so it FAILS CLOSED on any value outside the
+// JCS-safe JSON value tree — string-keyed maps, slices, strings, integers,
+// json.Number, bool, and nil. Structs are rejected because encoding/json
+// preserves struct-field declaration order, not JCS lexicographic member order,
+// so a struct would silently produce a non-canonical digest; floats are
+// rejected because Go's float serialization is not guaranteed JCS-compliant
+// (and the profile is float-free). The caller MUST build the canonical object
+// from map[string]any (ADR-036 defines the field set).
+func CanonicalizeState(state map[string]any) ([]byte, error) {
+	if err := validateCanonical(state); err != nil {
+		return nil, err
+	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -38,11 +47,41 @@ func CanonicalizeState(state any) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
+// validateCanonical recursively rejects any value outside the JCS-safe JSON
+// value tree, so a non-canonical or non-reproducible digest can never be
+// produced silently (structs, floats, pointers, typed maps, etc. all fail).
+func validateCanonical(v any) error {
+	switch x := v.(type) {
+	case nil, bool, string, json.Number,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64:
+		return nil
+	case map[string]any:
+		for k, val := range x {
+			if err := validateCanonical(val); err != nil {
+				return fmt.Errorf("at key %q: %w", k, err)
+			}
+		}
+		return nil
+	case []any:
+		for i, val := range x {
+			if err := validateCanonical(val); err != nil {
+				return fmt.Errorf("at index %d: %w", i, err)
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf(
+			"version: canonicalize state: unsupported type %T (the canonical object must be built from map[string]any/[]any/string/integer/bool/null; structs and floats are not JCS-canonical)",
+			v)
+	}
+}
+
 // StateDigest is the lowercase-hex SHA-256 of the canonicalized version state —
 // the bare-hex value bound as a release/v0.2 stateIdentity digest
 // (`{"sha256": <StateDigest>}`) and reproduced by a verifier to authenticate the
 // version-decision chain (ADR-036, §8.1).
-func StateDigest(state any) (string, error) {
+func StateDigest(state map[string]any) (string, error) {
 	canon, err := CanonicalizeState(state)
 	if err != nil {
 		return "", err

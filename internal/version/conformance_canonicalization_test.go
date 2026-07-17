@@ -116,3 +116,38 @@ func TestStateDigestDeterministicAndOrderIndependent(t *testing.T) {
 		t.Error("digest unchanged after a value change")
 	}
 }
+
+// The digest boundary fails closed: values outside the JCS-safe JSON value tree
+// (a struct — encoding/json would serialize its fields in declaration order, not
+// JCS lexicographic order — or a float — Go's float serialization is not
+// guaranteed JCS-compliant) are rejected, at any nesting depth, rather than
+// silently producing a non-canonical digest.
+func TestStateDigestRejectsNonCanonicalInput(t *testing.T) {
+	type notCanonical struct {
+		B string
+		A string
+	}
+	cases := map[string]map[string]any{
+		"top-level struct value":   {"x": notCanonical{B: "2", A: "1"}},
+		"nested struct in a slice": {"x": []any{map[string]any{"ok": "1"}, notCanonical{}}},
+		"float value":              {"x": 1.5},
+		"nested float in a map":    {"x": map[string]any{"y": 2.0}},
+	}
+	for name, state := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := StateDigest(state); err == nil {
+				t.Error("StateDigest accepted a non-canonical value; want a fail-closed error")
+			}
+		})
+	}
+
+	// The allowed domain still works: nested maps/slices, strings, ints,
+	// json.Number, bool, and nil.
+	ok := map[string]any{
+		"s": "x", "n": 3, "jn": json.Number("7"), "b": true, "nul": nil,
+		"arr": []any{1, "two", map[string]any{"k": false}},
+	}
+	if _, err := StateDigest(ok); err != nil {
+		t.Errorf("StateDigest rejected a valid canonical object: %v", err)
+	}
+}
