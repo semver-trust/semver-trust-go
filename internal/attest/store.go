@@ -128,6 +128,59 @@ func (s GitRefStore) List(subject string) ([][]byte, error) {
 	return envelopes, nil
 }
 
+// All returns every stored envelope across all subjects, deduplicated by
+// content: a release attestation is filed under both its commit and its tag
+// subject (StoreForSubjects), so the same bytes appear under two refs with the
+// same content-digest leaf. The accepted-predecessor reader (#76 M6 Phase C)
+// needs to discover every stored release/v0.2 for a component without knowing
+// the subject strings up front, which the subject-scoped List cannot do.
+// Envelopes are returned in ref-iteration order, first occurrence kept.
+func (s GitRefStore) All() ([][]byte, error) {
+	r, err := git.PlainOpenWithOptions(s.Path, &git.PlainOpenOptions{DetectDotGit: true})
+	if err != nil {
+		return nil, err
+	}
+	refs, err := r.References()
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[string]bool{}
+	var envelopes [][]byte
+	err = refs.ForEach(func(ref *plumbing.Reference) error {
+		if !strings.HasPrefix(ref.Name().String(), refPrefix) {
+			return nil
+		}
+		blob, err := r.BlobObject(ref.Hash())
+		if err != nil {
+			return err
+		}
+		reader, err := blob.Reader()
+		if err != nil {
+			return err
+		}
+		data, err := io.ReadAll(reader)
+		if closeErr := reader.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(data)
+		key := hex.EncodeToString(sum[:])
+		if seen[key] {
+			return nil
+		}
+		seen[key] = true
+		envelopes = append(envelopes, data)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return envelopes, nil
+}
+
 // validSubject keeps subjects inside the ref namespace: a subject that could
 // escape refs/attestations/ (path traversal, ref syntax) is rejected rather
 // than sanitized.
