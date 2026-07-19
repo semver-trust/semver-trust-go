@@ -116,6 +116,27 @@ func TagExists(path, name string) (bool, error) {
 	}
 }
 
+// DeleteTag removes the tag ref refs/tags/<name>. It is the best-effort
+// rollback for the release/v0.2 emit path (#76 M6): the tag is created before
+// the attestation is signed so version_state.emission can bind its raw ref OID,
+// so a signing failure must be able to undo the tag and restore the no-orphan
+// property. A missing tag is not an error (the rollback is a no-op).
+func DeleteTag(path, name string) error {
+	apath, err := rootPath(path)
+	if err != nil {
+		return err
+	}
+	r, err := git.PlainOpenWithOptions(apath, &git.PlainOpenOptions{DetectDotGit: true})
+	if err != nil {
+		return err
+	}
+	if err := r.Storer.RemoveReference(plumbing.NewTagReferenceName(name)); err != nil &&
+		!errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return err
+	}
+	return nil
+}
+
 // readEncoded reads an encoded object's content bytes.
 func readEncoded(obj plumbing.EncodedObject) ([]byte, error) {
 	reader, err := obj.Reader()

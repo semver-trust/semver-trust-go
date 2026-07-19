@@ -156,6 +156,40 @@ func TestCreateSignedTagRefusesExisting(t *testing.T) {
 	}
 }
 
+// DeleteTag is the release/v0.2 emit-path rollback (#76 M6): it removes a tag the
+// arm created before signing, so a signing failure leaves no orphan tag. A
+// present tag goes away; a missing tag deletes as a no-op (idempotent rollback).
+func TestDeleteTag(t *testing.T) {
+	repo, _ := buildFixtures(t)
+	signer := aliceSigner(t)
+
+	if err := CreateSignedTag(repo, "v2.0.0", "HEAD", "alice", "alice@semver-trust.test",
+		"v2.0.0", signEpoch, signer); err != nil {
+		t.Fatalf("CreateSignedTag: %v", err)
+	}
+	if exists, err := TagExists(repo, "v2.0.0"); err != nil || !exists {
+		t.Fatalf("TagExists before delete = %v, %v; want true, nil", exists, err)
+	}
+	if err := DeleteTag(repo, "v2.0.0"); err != nil {
+		t.Fatalf("DeleteTag: %v", err)
+	}
+	if exists, err := TagExists(repo, "v2.0.0"); err != nil || exists {
+		t.Fatalf("TagExists after delete = %v, %v; want false, nil", exists, err)
+	}
+	// The ref-set no longer carries it (what the emit path re-reads).
+	refs, err := TagRefs(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := refs["v2.0.0"]; ok {
+		t.Error("deleted tag still present in TagRefs")
+	}
+	// Idempotent: deleting an absent tag is not an error.
+	if err := DeleteTag(repo, "v2.0.0"); err != nil {
+		t.Errorf("DeleteTag on a missing tag = %v, want nil (no-op rollback)", err)
+	}
+}
+
 // requireGitSSHVerify asserts the installed git can verify SSH signatures
 // (>= 2.34, where gpg.ssh.allowedSignersFile arrived). CI runners have it;
 // an older local git is a broken environment, not a skip.
