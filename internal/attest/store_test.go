@@ -75,6 +75,46 @@ func TestGitRefStoreRoundTrip(t *testing.T) {
 	}
 }
 
+// All walks every refs/attestations/* envelope and deduplicates by content: a
+// release attestation filed under both its commit and its tag (StoreForSubjects)
+// is one chain member, not two. The accepted-predecessor reader (#76 M6 Phase C)
+// relies on this to discover releases without knowing subjects up front.
+func TestGitRefStoreAll(t *testing.T) {
+	store := GitRefStore{Path: newRepo(t)}
+	commit := "9672f0b2f901fe632412c8f21026a7467fba585b"
+	tag := "v0.1.0"
+	envelope := []byte(`{"payloadType":"application/vnd.in-toto+json","payload":"e30=","signatures":[]}`)
+	otherSubject := "0000000000000000000000000000000000000000"
+	other := []byte(`{"payloadType":"application/vnd.in-toto+json","payload":"e1t9","signatures":[]}`)
+
+	// Same bytes under two subjects (the StoreForSubjects pattern) + a distinct
+	// envelope under a third subject.
+	if _, err := store.Put(commit, envelope); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put(tag, envelope); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put(otherSubject, other); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := store.All()
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("All returned %d envelopes, want 2 (the shared one deduped + the distinct one)", len(all))
+	}
+	found := map[string]bool{}
+	for _, e := range all {
+		found[string(e)] = true
+	}
+	if !found[string(envelope)] || !found[string(other)] {
+		t.Errorf("All missing envelopes: %v", found)
+	}
+}
+
 func TestGitRefStoreRejectsBadSubjects(t *testing.T) {
 	store := GitRefStore{Path: newRepo(t)}
 	for _, subject := range []string{"", "../escape", "/lead", "trail/", "sp ace", "col:on", "star*"} {
