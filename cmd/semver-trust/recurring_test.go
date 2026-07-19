@@ -61,15 +61,13 @@ func recurringDescriptor(t *testing.T, repo string) map[string]any {
 	}
 }
 
-// TestVerifyRecurringAdvance is the C2a payoff: after a genesis release/v0.2 and a
-// later commit, verify DISCOVERS the accepted chain head and switches to the
-// recurring path — the interval is P..TO (only the post-genesis commit, not the
-// founding history) and the policy transition runs under the predecessor
-// authority. No recurring release is emitted here (that is the release-side, C2b);
-// this proves verify's recurrence detection and wiring.
-func TestVerifyRecurringAdvance(t *testing.T) {
+// setupRecurringChain builds a repo with a genesis release/v0.2 and one later
+// commit, returning the repo, descriptor path, and the founding / genesis-target /
+// post-genesis commit SHAs.
+func setupRecurringChain(t *testing.T) (repo, descPath, foundingCommit, genesisCommit, newCommit string) {
+	t.Helper()
 	keys := stageVendoredKeys(t)
-	repo := t.TempDir()
+	repo = t.TempDir()
 	if out, err := exec.Command("git", "-c", "init.defaultBranch=main", "init", "--quiet", "--object-format=sha1", repo).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
@@ -80,12 +78,13 @@ func TestVerifyRecurringAdvance(t *testing.T) {
 		".semver-trust/allowed_signers":     treeAllowedSigners(t),
 		".semver-trust/attestation_signers": treeAttestationSigners(t),
 	}, "feat: adopt semver-trust\n\nProvenance: human")
+	foundingCommit = gitOut(t, repo, "rev-parse", "HEAD")
 	// A feature commit that becomes the genesis release target.
 	commitSignedCLI(t, repo, keys, "human-alice", "alice@semver-trust.test",
 		"widget.go", "package widget\n", "feat: widget core\n\nProvenance: human")
 
-	descPath := writeDescriptorFile(t, recurringDescriptor(t, repo))
-	genesisCommit := gitOut(t, repo, "rev-parse", "HEAD")
+	descPath = writeDescriptorFile(t, recurringDescriptor(t, repo))
+	genesisCommit = gitOut(t, repo, "rev-parse", "HEAD")
 
 	// Emit the GENESIS release/v0.2 (the B3 path): creates tag v0.1.0 at HEAD and
 	// stores a bob-signed release/v0.2 attestation.
@@ -106,7 +105,18 @@ func TestVerifyRecurringAdvance(t *testing.T) {
 	// A new commit AFTER the genesis release — the recurring interval's content.
 	commitSignedCLI(t, repo, keys, "human-alice", "alice@semver-trust.test",
 		"widget.go", "package widget // v2\n", "feat: widget frobnicator\n\nProvenance: human")
-	newCommit := gitOut(t, repo, "rev-parse", "HEAD")
+	newCommit = gitOut(t, repo, "rev-parse", "HEAD")
+	return repo, descPath, foundingCommit, genesisCommit, newCommit
+}
+
+// TestVerifyRecurringAdvance is the C2a payoff: after a genesis release/v0.2 and a
+// later commit, verify DISCOVERS the accepted chain head and switches to the
+// recurring path — the interval is P..TO (only the post-genesis commit, not the
+// founding history) and the policy transition runs under the predecessor
+// authority. No recurring release is emitted here (that is the release-side, C2b);
+// this proves verify's recurrence detection and wiring.
+func TestVerifyRecurringAdvance(t *testing.T) {
+	repo, descPath, _, genesisCommit, newCommit := setupRecurringChain(t)
 
 	// verify --to HEAD in v0.10 mode: discovers the genesis chain head → recurring.
 	vout, err := runCommand(t, "verify",
@@ -147,6 +157,47 @@ func TestVerifyRecurringAdvance(t *testing.T) {
 	// Disclosure: anchored at the predecessor tag, not an adoption boundary.
 	if report.From != "v0.1.0" || report.FromIsAdoptionBoundary {
 		t.Errorf("from/boundary = %q/%v, want v0.1.0 / false", report.From, report.FromIsAdoptionBoundary)
+	}
+}
+
+// TestVerifyRecurringRejectsCallerFromSkip proves a caller-supplied --from is NOT
+// silently replaced with the accepted predecessor P: a recurring verify anchored
+// at a non-predecessor revision (the founding commit, an ancestor of P) is refused
+// (from_not_predecessor), so the §5.2/ADR-027 skip guard is reachable at the CLI.
+func TestVerifyRecurringRejectsCallerFromSkip(t *testing.T) {
+	repo, descPath, foundingCommit, _, _ := setupRecurringChain(t)
+
+	out, err := runCommand(t, "verify",
+		"--repo", repo, "--from", foundingCommit, "--to", "main",
+		"--bootstrap-descriptor", descPath,
+		"--verify-time", releaseEpoch, "--json")
+	if err == nil {
+		t.Fatalf("expected a from_not_predecessor refusal for a non-predecessor --from, got success:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "from_not_predecessor") {
+		t.Errorf("error = %v, want a from_not_predecessor interval refusal", err)
+	}
+}
+
+// TestVerifyRecurringAcceptsPredecessorFrom confirms the companion: pinning --from
+// to the accepted predecessor (its tag) is a valid explicit continuation and
+// verifies as recurring.
+func TestVerifyRecurringAcceptsPredecessorFrom(t *testing.T) {
+	repo, descPath, _, _, _ := setupRecurringChain(t)
+
+	vout, err := runCommand(t, "verify",
+		"--repo", repo, "--from", "v0.1.0", "--to", "main",
+		"--bootstrap-descriptor", descPath,
+		"--verify-time", releaseEpoch, "--json")
+	if err != nil {
+		t.Fatalf("verify --from v0.1.0 (the predecessor): %v\n%s", err, vout)
+	}
+	var report verifyReportJSON
+	if err := json.Unmarshal([]byte(vout), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.PolicyState == nil || report.PolicyState.Authority != "predecessor" {
+		t.Errorf("policy_state authority = %+v, want the recurring predecessor authority", report.PolicyState)
 	}
 }
 

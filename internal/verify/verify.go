@@ -548,15 +548,25 @@ func enumerateInterval(repo string, opts Options, report *Report) ([]vcs.RangeCo
 		Commits:            graph,
 	}
 	if pred := report.Predecessor; pred != nil {
-		// Recurring: the accepted head anchors the interval. SelectInterval requires
-		// RequestedFrom == P (an explicit continuation of exactly this head), and
-		// the descriptor's genesis mode/boundary are not consulted.
+		// Recurring: the accepted head anchors the interval, and the descriptor's
+		// genesis mode/boundary are not consulted. SelectInterval requires
+		// RequestedFrom == P. A caller --from is NOT silently replaced with P — it is
+		// resolved and passed through, so a caller-selected skip to a non-predecessor
+		// revision is refused (from_not_predecessor, §5.2/ADR-027); only when the
+		// caller gives no --from do we synthesize the accepted-head anchor P.
 		ipd := pred.IntervalDescriptor()
-		from := pred.To()
 		in.Mode = vcs.IntervalRecurring
 		in.ExistingChainHeads = 1
 		in.Predecessor = &ipd
 		in.Boundary = nil
+		from := pred.To()
+		if opts.From != "" {
+			resolved, cerr := commitHash(repo, opts.From)
+			if cerr != nil {
+				return nil, abort(stepEnumerate, fmt.Errorf("resolving --from %q: %w", opts.From, cerr))
+			}
+			from = resolved
+		}
 		in.RequestedFrom = &from
 	} else if opts.From != "" {
 		f := opts.From
