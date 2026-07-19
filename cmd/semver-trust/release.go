@@ -298,10 +298,22 @@ prints the would-be tag and attestation without writing anything.`,
 					_ = vcs.DeleteTag(repoPath, tagName)
 					return err
 				}
+				// StoreForSubjects writes subjects sequentially and returns the refs
+				// written before any error. Because the tag was created BEFORE the
+				// store (the reorder), a partial or failed store must roll the tag
+				// back too — a tag with no complete release attestation is exactly
+				// the orphan state the reorder exists to prevent. The already-written
+				// attestation refs (if any) are inert without the tag, so they are
+				// surfaced for the operator to prune or audit rather than deleted.
 				refs, err := attest.StoreForSubjects(
 					attest.GitRefStore{Path: repoPath}, []string{report.ToCommit, tagName}, emission.Envelope)
 				if err != nil {
-					return err
+					_ = vcs.DeleteTag(repoPath, tagName)
+					if len(refs) > 0 {
+						return fmt.Errorf("release refused: storing the release/v0.2 attestation failed after %d of 2 subjects; the tag was rolled back, prune the partial attestation refs %v: %w",
+							len(refs), refs, err)
+					}
+					return fmt.Errorf("release refused: storing the release/v0.2 attestation failed; the tag was rolled back: %w", err)
 				}
 				result.Signer = emission.KeyID
 				result.StoredRefs = refs

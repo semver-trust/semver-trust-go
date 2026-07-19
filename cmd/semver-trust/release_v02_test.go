@@ -234,6 +234,44 @@ func TestReleaseV02DryRunEmitsNullTag(t *testing.T) {
 	}
 }
 
+// TestReleaseV02RollsBackTagOnStoreFailure exercises the reorder's no-orphan
+// guarantee at its hardest seam: the tag is created before the attestation is
+// stored, so a store failure — after CreateSignedTag and Emit both succeed — must
+// still roll the tag back. Here the store fails deterministically: a pre-created
+// ref FILE at refs/attestations/v0.1.0 blocks the second subject's write
+// (refs/attestations/v0.1.0/<digest> cannot create a directory under a file), so
+// StoreForSubjects returns after storing only the commit subject.
+func TestReleaseV02RollsBackTagOnStoreFailure(t *testing.T) {
+	repo := buildInceptionRepo(t)
+	descPath := writeDescriptorFile(t, inceptionDescriptor(t, repo))
+	// The release cuts v0.1.0; occupy refs/attestations/v0.1.0 as a ref so the
+	// tag-subject store hits a git directory/file conflict.
+	gitCLI(t, repo, "update-ref", "refs/attestations/v0.1.0", "HEAD")
+
+	out, err := runCommand(t, "release",
+		"--repo", repo, "--to", "main",
+		"--bootstrap-descriptor", descPath,
+		"--predicate", "v0.2",
+		"--repository-digest", "sha256:"+repoDigestHex,
+		"--claimed-bump", "minor", "--blast", "low",
+		"--verify-time", releaseEpoch,
+		"--tag-key", bobKeyPath(t),
+		"--attest-key", bobKeyPath(t),
+		"--tagger-name", "alice", "--tagger-email", "alice@semver-trust.test",
+		"--json")
+	if err == nil {
+		t.Fatalf("expected a store failure, got success:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "rolled back") {
+		t.Errorf("error = %v, want a rolled-back store-failure message", err)
+	}
+	// The orphan tag must be gone — a tag with no complete release attestation is
+	// exactly what the reorder exists to prevent.
+	if got := gitOut(t, repo, "tag", "--list", "v0.1.0"); got != "" {
+		t.Errorf("tag v0.1.0 still present after a store failure (%q); the reorder must roll it back", got)
+	}
+}
+
 // TestReleaseV02RequiresDescriptorAndDigest confirms the opt-in preconditions:
 // v0.2 needs the bootstrap descriptor (the authenticated policy/version state) and
 // the operator-supplied §4.3 repository digest.
