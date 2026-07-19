@@ -15,6 +15,7 @@ import (
 	"github.com/semver-trust/semver-trust-go/conformance"
 	"github.com/semver-trust/semver-trust-go/internal/attest"
 	"github.com/semver-trust/semver-trust-go/internal/sshsig"
+	"github.com/semver-trust/semver-trust-go/internal/vcs"
 	"github.com/semver-trust/semver-trust-go/internal/version"
 )
 
@@ -52,6 +53,29 @@ func chainVerifier(t *testing.T, signer ssh.Signer) *attest.Verifier {
 	return v
 }
 
+func releaseSchema(t *testing.T) []byte {
+	t.Helper()
+	schema, err := conformance.Vector("schemas/release-v0.2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return schema
+}
+
+func gitCmd(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+	full := append([]string{
+		"-C", repo,
+		"-c", "user.name=Test", "-c", "user.email=test@semver-trust.test",
+		"-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false",
+	}, args...)
+	out, err := exec.Command("git", full...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
@@ -59,6 +83,29 @@ func initGitRepo(t *testing.T) string {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 	return repo
+}
+
+func mkCommit(t *testing.T, repo, msg string) string {
+	t.Helper()
+	gitCmd(t, repo, "commit", "--allow-empty", "-m", msg)
+	return gitCmd(t, repo, "rev-parse", "HEAD")
+}
+
+// mkTag creates an annotated tag at commit and returns its real raw ref OID (the
+// tag object) and peeled commit OID, read back through vcs.TagRefs — the same path
+// the reader uses.
+func mkTag(t *testing.T, repo, name, commit string) (rawRefOID, peeledCommitOID string) {
+	t.Helper()
+	gitCmd(t, repo, "tag", "-a", name, commit, "-m", name)
+	refs, err := vcs.TagRefs(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, ok := refs[name]
+	if !ok {
+		t.Fatalf("tag %q not found after creation", name)
+	}
+	return r.RefOID, r.CommitOID
 }
 
 // releaseSpec describes one release to synthesize into a chain. The resulting
@@ -174,12 +221,10 @@ func emitAndStore(t *testing.T, repoPath string, signer ssh.Signer, schema []byt
 	return digest
 }
 
-// genesisSpec + advanceSpec build a clean genesis→advance chain for "auth":
-// auth/v0.1.0 (inception, clean) → auth/v0.2.0 (recurring advance, clean).
-func genesisSpec() releaseSpec {
+func genesisSpec(commit, rawRef string) releaseSpec {
 	return releaseSpec{
 		repoID: "repo:test/auth", component: "auth", tagPrefix: "auth/",
-		to: oid('1'), rawRefOID: oid('7'), emittedTag: "auth/v0.1.0", genesis: true,
+		to: commit, rawRefOID: rawRef, emittedTag: "auth/v0.1.0", genesis: true,
 		state: version.VersionState{
 			BaselineCore: "0.0.0", TargetCore: "0.1.0", TargetBump: "minor", CleanAccepted: true,
 			TargetIntervals: []string{version.GenesisIntervalID("auth", "inception")},
@@ -188,15 +233,16 @@ func genesisSpec() releaseSpec {
 	}
 }
 
-func advanceSpec(genesisDigest string) releaseSpec {
+func advanceSpec(genCommit, genRawRef, advCommit, advRawRef, genesisDigest string) releaseSpec {
 	prior := "sha256:" + genesisDigest
+	baseline := &version.Binding{Tag: "auth/v0.1.0", RefOID: genRawRef, CommitOID: genCommit}
 	return releaseSpec{
 		repoID: "repo:test/auth", component: "auth", tagPrefix: "auth/",
-		to: oid('2'), rawRefOID: oid('8'), emittedTag: "auth/v0.2.0", genesis: false,
-		predecessor: &version.Binding{Tag: "auth/v0.1.0", RefOID: oid('7'), CommitOID: oid('1')},
+		to: advCommit, rawRefOID: advRawRef, emittedTag: "auth/v0.2.0", genesis: false,
+		predecessor: baseline,
 		priorDigest: &prior,
 		state: version.VersionState{
-			Baseline:     &version.Binding{Tag: "auth/v0.1.0", RefOID: oid('7'), CommitOID: oid('1')},
+			Baseline:     baseline,
 			BaselineCore: "0.1.0", TargetCore: "0.2.0", TargetBump: "minor", CleanAccepted: true,
 			TargetIntervals: []string{"interval:auth:recurring:2"},
 			Iterations:      map[string]int{},
@@ -204,19 +250,22 @@ func advanceSpec(genesisDigest string) releaseSpec {
 	}
 }
 
-// TestAcceptedChainHeadAdvance is the happy path: a genesis→advance chain is
-// discovered, the head selected, the complete chain verified, and the recurring
-// authority projections produced.
+// TestAcceptedChainHeadAdvance is the happy path over a REAL repo: a genesis→advance
+// chain (real commits + annotated tags) is discovered, the head selected, the
+// complete chain and the head tag verified, and the recurring authority
+// projections produced.
 func TestAcceptedChainHeadAdvance(t *testing.T) {
 	repo := initGitRepo(t)
 	signer := chainTestSigner(t)
-	schema, err := conformance.Vector("schemas/release-v0.2.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	schema := releaseSchema(t)
 
-	gd := emitAndStore(t, repo, signer, schema, genesisSpec())
-	advDigest := emitAndStore(t, repo, signer, schema, advanceSpec(gd))
+	c1 := mkCommit(t, repo, "genesis")
+	rawG, _ := mkTag(t, repo, "auth/v0.1.0", c1)
+	gd := emitAndStore(t, repo, signer, schema, genesisSpec(c1, rawG))
+
+	c2 := mkCommit(t, repo, "advance")
+	rawS, _ := mkTag(t, repo, "auth/v0.2.0", c2)
+	advDigest := emitAndStore(t, repo, signer, schema, advanceSpec(c1, rawG, c2, rawS, gd))
 
 	pred, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
 	if err != nil {
@@ -226,33 +275,29 @@ func TestAcceptedChainHeadAdvance(t *testing.T) {
 		t.Fatal("AcceptedChainHead = nil, want the advance release as head")
 	}
 
-	// The head is the advance release (nobody names it as predecessor).
-	if pred.To() != oid('2') || pred.Tag() != "auth/v0.2.0" {
-		t.Errorf("head = %s@%s, want auth/v0.2.0@2..2", pred.Tag(), pred.To()[:4])
+	if pred.To() != c2 || pred.Tag() != "auth/v0.2.0" {
+		t.Errorf("head = %s@%s, want auth/v0.2.0@%s", pred.Tag(), pred.To()[:7], c2[:7])
 	}
 	if pred.ResultingStateDigest() != "sha256:"+advDigest {
 		t.Errorf("ResultingStateDigest = %s, want sha256:%s", pred.ResultingStateDigest(), advDigest)
 	}
 
-	// version authority: carries the head's reconstructed, digest-verified state.
 	vs := pred.VersionSelected()
 	if !vs.Accepted || !vs.ChainHead || vs.SourceSuccessorExists {
 		t.Errorf("VersionSelected flags = accepted=%v chainHead=%v successor=%v, want true/true/false", vs.Accepted, vs.ChainHead, vs.SourceSuccessorExists)
 	}
-	if vs.To != oid('2') || len(vs.CanonicalTags) != 1 || vs.CanonicalTags[0].Tag != "auth/v0.2.0" || vs.CanonicalTags[0].CommitOID != oid('2') {
+	if vs.To != c2 || len(vs.CanonicalTags) != 1 || vs.CanonicalTags[0].Tag != "auth/v0.2.0" || vs.CanonicalTags[0].CommitOID != c2 || vs.CanonicalTags[0].RefOID != rawS {
 		t.Errorf("VersionSelected To/CanonicalTags = %s/%+v", vs.To, vs.CanonicalTags)
 	}
 	if vs.State.TargetCore != "0.2.0" || vs.State.BaselineCore != "0.1.0" || vs.State.Baseline == nil || vs.State.Baseline.Tag != "auth/v0.1.0" {
 		t.Errorf("head State = %+v, want target 0.2.0 baseline auth/v0.1.0@0.1.0", vs.State)
 	}
 
-	// interval authority: To=P, TagTarget re-resolved (no real tag → tolerated == To).
 	iv := pred.IntervalDescriptor()
-	if !iv.Accepted || !iv.ChainHead || iv.Repository != "repo:test/auth" || iv.Component != "auth" || iv.To != oid('2') || iv.TagTarget != oid('2') {
-		t.Errorf("IntervalDescriptor = %+v, want accepted head, To=TagTarget=2..2", iv)
+	if !iv.Accepted || !iv.ChainHead || iv.Repository != "repo:test/auth" || iv.Component != "auth" || iv.To != c2 || iv.TagTarget != c2 {
+		t.Errorf("IntervalDescriptor = %+v, want accepted head, To=TagTarget=%s", iv, c2[:7])
 	}
 
-	// policy pins carry the head's authenticated §5.4 facts.
 	pins := pred.PolicyPins()
 	if pins.PolicyPath != ".semver-trust/policy.toml" || pins.PolicyDigest != "sha256:"+oid('b')+oid('b') {
 		t.Errorf("policy pins = %+v, want the pinned active policy", pins)
@@ -265,12 +310,15 @@ func TestAcceptedChainHeadAdvance(t *testing.T) {
 	}
 }
 
-// A lone genesis release is itself the head.
+// A lone genesis release (real commit + tag) is itself the head.
 func TestAcceptedChainHeadGenesisOnlyIsHead(t *testing.T) {
 	repo := initGitRepo(t)
 	signer := chainTestSigner(t)
-	schema, _ := conformance.Vector("schemas/release-v0.2.json")
-	emitAndStore(t, repo, signer, schema, genesisSpec())
+	schema := releaseSchema(t)
+
+	c1 := mkCommit(t, repo, "genesis")
+	rawG, _ := mkTag(t, repo, "auth/v0.1.0", c1)
+	emitAndStore(t, repo, signer, schema, genesisSpec(c1, rawG))
 
 	pred, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
 	if err != nil || pred == nil {
@@ -281,15 +329,63 @@ func TestAcceptedChainHeadGenesisOnlyIsHead(t *testing.T) {
 	}
 }
 
-// No stored release for the component → genesis (nil), the caller stays on the
-// descriptor authority.
+// The head's emitted tag MUST still resolve to the signed binding (§5.2/ADR-027):
+// a missing tag, a moved tag (peels elsewhere), and a recreated tag (raw ref OID
+// differs) each abort — an attestation without its live tag cannot become the
+// chain head the next recurring release builds on (PR #107 no-orphan discipline).
+func TestAcceptedChainHeadRequiresLiveHeadTag(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		repo := initGitRepo(t)
+		signer := chainTestSigner(t)
+		schema := releaseSchema(t)
+		c1 := mkCommit(t, repo, "genesis")
+		// No tag created — emit with a placeholder raw ref.
+		emitAndStore(t, repo, signer, schema, genesisSpec(c1, oid('7')))
+		_, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
+		if err == nil || !strings.Contains(err.Error(), "absent from the repository") {
+			t.Errorf("missing-tag error = %v, want an absent-tag abort", err)
+		}
+	})
+
+	t.Run("moved", func(t *testing.T) {
+		repo := initGitRepo(t)
+		signer := chainTestSigner(t)
+		schema := releaseSchema(t)
+		c1 := mkCommit(t, repo, "genesis")
+		rawG, _ := mkTag(t, repo, "auth/v0.1.0", c1)
+		emitAndStore(t, repo, signer, schema, genesisSpec(c1, rawG))
+		// Move the tag to a different commit after the attestation was signed.
+		c2 := mkCommit(t, repo, "later")
+		gitCmd(t, repo, "tag", "-f", "-a", "auth/v0.1.0", c2, "-m", "moved")
+		_, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
+		if err == nil || !strings.Contains(err.Error(), "ref has moved") {
+			t.Errorf("moved-tag error = %v, want a moved-ref abort", err)
+		}
+	})
+
+	t.Run("recreated", func(t *testing.T) {
+		repo := initGitRepo(t)
+		signer := chainTestSigner(t)
+		schema := releaseSchema(t)
+		c1 := mkCommit(t, repo, "genesis")
+		mkTag(t, repo, "auth/v0.1.0", c1) // real tag, but the emission pins a different raw ref
+		// Sign with a raw_ref_oid that is NOT the live tag object (peels correct).
+		emitAndStore(t, repo, signer, schema, genesisSpec(c1, oid('9')))
+		_, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
+		if err == nil || !strings.Contains(err.Error(), "recreated") {
+			t.Errorf("recreated-tag error = %v, want a recreated-tag abort", err)
+		}
+	})
+}
+
+// No stored release for the component → genesis (nil): the caller stays on the
+// descriptor authority. A release for a different component is not selected.
 func TestAcceptedChainHeadNoneIsGenesis(t *testing.T) {
 	repo := initGitRepo(t)
 	signer := chainTestSigner(t)
-	schema, _ := conformance.Vector("schemas/release-v0.2.json")
+	schema := releaseSchema(t)
 
-	// A release for a DIFFERENT component must not be selected.
-	other := genesisSpec()
+	other := genesisSpec(oid('1'), oid('7'))
 	other.component = "other"
 	other.tagPrefix = "other/"
 	other.emittedTag = "other/v0.1.0"
@@ -305,17 +401,17 @@ func TestAcceptedChainHeadNoneIsGenesis(t *testing.T) {
 	}
 }
 
-// Two releases both advancing from genesis → a fork → abort.
+// Two releases both advancing from genesis → a fork → abort (before tag
+// resolution, so synthetic OIDs suffice).
 func TestAcceptedChainHeadForkAborts(t *testing.T) {
 	repo := initGitRepo(t)
 	signer := chainTestSigner(t)
-	schema, _ := conformance.Vector("schemas/release-v0.2.json")
+	schema := releaseSchema(t)
 
-	gd := emitAndStore(t, repo, signer, schema, genesisSpec())
-	emitAndStore(t, repo, signer, schema, advanceSpec(gd))
-	fork := advanceSpec(gd) // second successor off the same genesis, different tag/commit
+	gd := emitAndStore(t, repo, signer, schema, genesisSpec(oid('1'), oid('7')))
+	emitAndStore(t, repo, signer, schema, advanceSpec(oid('1'), oid('7'), oid('2'), oid('8'), gd))
+	fork := advanceSpec(oid('1'), oid('7'), oid('3'), oid('5'), gd) // second successor off the same genesis
 	fork.emittedTag = "auth/v0.2.0-t1.1"
-	fork.to = oid('3')
 	fork.state.TargetCore = "0.2.0"
 	fork.state.CleanAccepted = false
 	fork.state.Iterations = map[string]int{"T1": 1}
@@ -332,14 +428,13 @@ func TestAcceptedChainHeadForkAborts(t *testing.T) {
 func TestAcceptedChainHeadBrokenLinkAborts(t *testing.T) {
 	repo := initGitRepo(t)
 	signer := chainTestSigner(t)
-	schema, _ := conformance.Vector("schemas/release-v0.2.json")
+	schema := releaseSchema(t)
 
-	gd, err := version.StateDigest(version.CanonicalStateMap("auth", "auth/", genesisSpec().state, nil))
+	gd, err := version.StateDigest(version.CanonicalStateMap("auth", "auth/", genesisSpec(oid('1'), oid('7')).state, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Store ONLY the successor; the genesis it links to is missing.
-	emitAndStore(t, repo, signer, schema, advanceSpec(gd))
+	emitAndStore(t, repo, signer, schema, advanceSpec(oid('1'), oid('7'), oid('2'), oid('8'), gd)) // successor only
 
 	_, err = AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
 	if err == nil || !strings.Contains(err.Error(), "chain is broken") {
@@ -352,9 +447,9 @@ func TestAcceptedChainHeadBrokenLinkAborts(t *testing.T) {
 func TestAcceptedChainHeadTamperedDigestAborts(t *testing.T) {
 	repo := initGitRepo(t)
 	signer := chainTestSigner(t)
-	schema, _ := conformance.Vector("schemas/release-v0.2.json")
+	schema := releaseSchema(t)
 
-	g := genesisSpec()
+	g := genesisSpec(oid('1'), oid('7'))
 	g.forceDigest = oid('9') + oid('9') // a signed-but-wrong resulting_state.digest
 	emitAndStore(t, repo, signer, schema, g)
 
@@ -371,11 +466,10 @@ func TestAcceptedChainHeadSkipsUnverifiable(t *testing.T) {
 	repo := initGitRepo(t)
 	realSigner := chainTestSigner(t)
 	strangerSigner := chainTestSigner(t)
-	schema, _ := conformance.Vector("schemas/release-v0.2.json")
+	schema := releaseSchema(t)
 
-	emitAndStore(t, repo, strangerSigner, schema, genesisSpec())
+	emitAndStore(t, repo, strangerSigner, schema, genesisSpec(oid('1'), oid('7')))
 
-	// The verifier enrolls only realSigner, so the stranger's release does not verify.
 	pred, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, realSigner), chainEpoch)
 	if err != nil {
 		t.Fatalf("AcceptedChainHead: %v", err)

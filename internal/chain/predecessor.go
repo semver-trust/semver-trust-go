@@ -42,10 +42,10 @@ type Predecessor struct {
 	head  verifiedRelease
 	state version.VersionState // the head's reconstructed, digest-verified resulting state
 
-	// tagTarget is the head's emitted tag re-resolved against the current repo
-	// (ADR-027: any tag naming P MUST still resolve to P). Equal to the head's TO
-	// when the tag is present-and-correct or absent; a moved tag makes it differ,
-	// which the recurring interval refuses (predecessor_ref_moved).
+	// tagTarget is the head's emitted tag re-resolved against the current repo. It
+	// always equals the head's TO: AcceptedChainHead refuses to return a
+	// predecessor whose tag is absent, moved, or recreated (§5.2/ADR-027), so a
+	// live-but-divergent tag never reaches the interval evaluator.
 	tagTarget string
 }
 
@@ -67,8 +67,10 @@ type verifiedRelease struct {
 // and is skipped, so a broken link surfaces later as a disconnected chain rather
 // than a silently-trusted one), keeps the verified release/v0.2 for this
 // component, selects the unique head (the release no other names as predecessor),
-// and verifies the complete hash-chain back to genesis. A fork (2+ heads), a cycle
-// (0 heads among ≥1 release), a broken link, or a digest mismatch aborts.
+// verifies the complete hash-chain back to genesis, and confirms the head's emitted
+// tag still resolves to the signed binding. A fork (2+ heads), a cycle (0 heads
+// among ≥1 release), a broken link, a digest mismatch, or a missing/moved/recreated
+// head tag aborts.
 func AcceptedChainHead(repoPath, repository, component string, v *attest.Verifier, at time.Time) (*Predecessor, error) {
 	envelopes, err := (attest.GitRefStore{Path: repoPath}).All()
 	if err != nil {
@@ -95,14 +97,29 @@ func AcceptedChainHead(repoPath, repository, component string, v *attest.Verifie
 		return nil, err
 	}
 
-	// Re-resolve the head's tag against the current repo (moved-ref detection).
-	tagTarget := head.to
+	// The accepted predecessor's tag MUST still resolve to P, and to the exact
+	// signed binding (§5.2/ADR-027, §7.5/ADR-029): a missing, moved, or recreated
+	// tag breaks continuity — and, per PR #107's no-orphan-tag discipline, an
+	// attestation whose tag is gone must not become the head the next recurring
+	// release chains to. Assert the live ref matches version_state.emission.tag on
+	// both the peeled commit OID and the raw ref OID.
+	em := head.doc.Predicate.VersionState.Emission.Tag
+	if em == nil {
+		return nil, fmt.Errorf("accepted-predecessor: head %q binds no emission.tag", head.tag)
+	}
 	tagRefs, err := vcs.TagRefs(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("accepted-predecessor: resolving tags: %w", err)
 	}
-	if ref, ok := tagRefs[head.tag]; ok {
-		tagTarget = ref.CommitOID
+	ref, ok := tagRefs[head.tag]
+	if !ok {
+		return nil, fmt.Errorf("accepted-predecessor: head tag %q is absent from the repository — the accepted predecessor's tag must still resolve to P (§5.2/ADR-027)", head.tag)
+	}
+	if ref.CommitOID != em.PeeledCommitOID {
+		return nil, fmt.Errorf("accepted-predecessor: head tag %q peels to %s, not the signed emission.tag.peeled_commit_oid %s — the ref has moved (§5.2/ADR-027)", head.tag, ref.CommitOID, em.PeeledCommitOID)
+	}
+	if ref.RefOID != em.RawRefOID {
+		return nil, fmt.Errorf("accepted-predecessor: head tag %q raw ref %s does not match the signed emission.tag.raw_ref_oid %s — the tag was recreated (§7.5/ADR-029)", head.tag, ref.RefOID, em.RawRefOID)
 	}
 
 	return &Predecessor{
@@ -111,7 +128,7 @@ func AcceptedChainHead(repoPath, repository, component string, v *attest.Verifie
 		tagPrefix:  tagPrefix,
 		head:       head,
 		state:      headState,
-		tagTarget:  tagTarget,
+		tagTarget:  ref.CommitOID,
 	}, nil
 }
 
