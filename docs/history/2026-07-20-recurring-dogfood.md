@@ -10,9 +10,10 @@ process this run established.
 
 > **This was a disposable demonstration, not a release of `semver-trust-go`.**
 > It ran in a throwaway scratch repository with throwaway SSH keys — nothing was
-> signed with the maintainer's key and no `release/v0.2` tag exists on this
-> repository. The canonical repo still ships the default `release/v0.1` chain
-> (`v0.1.0`–`v0.2.1`). The point was to exercise and document the recurring
+> signed with the maintainer's key and no `release/v0.2` attestation (a v0.10
+> recurring chain) has been published for this repository. The canonical repo still
+> ships the default `release/v0.1` chain — SemVer tags `v0.1.0`–`v0.2.1`, each with
+> a `release/v0.1` attestation. The point was to exercise and document the recurring
 > ceremony before adopting it here (see the runbook's *Continuing an
 > already-published line*).
 
