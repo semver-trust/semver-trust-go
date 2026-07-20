@@ -267,7 +267,7 @@ prints the would-be tag and attestation without writing anything.`,
 			// The v0.1 arm keeps the classic build-sign-then-tag order.
 			if predicate == "v0.2" {
 				result.PredicateType = attest.PredicateReleaseV02
-				v02, err := releaseV02Input(report, comp, decision, *vdec, desc, claimed, blast, repoDigest, tagName, at)
+				v02, err := releaseV02Input(report, comp, decision, *vdec, desc, nil, claimed, blast, repoDigest, tagName, at)
 				if err != nil {
 					return err
 				}
@@ -735,6 +735,132 @@ func decideReleaseAncestry(report *verify.Report, desc *chain.BootstrapDescripto
 	}, nil
 }
 
+// decidePromote is the v0.10 supersede decide path (§7.3/§7.5/ADR-029), used by
+// promote when a bootstrap descriptor supplies the authority. It re-evaluates the
+// superseded release at its OWN commit under the "superseded" version authority: the
+// target core, baseline, and source lineage are PRESERVED (a supersede re-evaluates
+// the same source — it does not advance the line), and only the channel moves — an
+// unpromoted prerelease target promotes to its clean tag when the accumulated
+// evidence now qualifies. superseded is the accepted release being promoted; its own
+// resulting state is the hash-chain link the promotion binds as prior_state.
+func decidePromote(report *verify.Report, desc *chain.BootstrapDescriptor, repoPath string, claimed evidence.Bump, blast trust.Blast, superseded *chain.Predecessor) (versionDecision, error) {
+	fail := func(err error) (versionDecision, error) {
+		return versionDecision{}, err
+	}
+	comp, err := targetEffective(report)
+	if err != nil {
+		return fail(err)
+	}
+	if desc.Component != comp.Name {
+		return fail(fmt.Errorf("promote refused: bootstrap descriptor component %q does not match the promoted component %q (§5.4 subject binding)", desc.Component, comp.Name))
+	}
+
+	nodes, err := vcs.CommitGraph(repoPath, report.ToCommit)
+	if err != nil {
+		return fail(err)
+	}
+	graph := make([]version.AncestryCommit, len(nodes))
+	for i, n := range nodes {
+		graph[i] = version.AncestryCommit(n)
+	}
+	peeled, err := vcs.TagRefs(repoPath)
+	if err != nil {
+		return fail(err)
+	}
+	refs := make(map[string]version.RefEntry, len(peeled))
+	for tag, r := range peeled {
+		refs[tag] = version.RefEntry(r)
+	}
+
+	decisionInputs := version.DecisionInputs{
+		EffectiveTrust:  comp.Effective,
+		Threshold:       report.Policy.Threshold,
+		Blast:           blast.String(),
+		Strategy:        report.Policy.Strategy,
+		DifferAvailable: report.Evidence.DifferAvailable,
+		SemanticFloor:   report.Evidence.SemanticFloor,
+		ClaimedBump:     claimed.String(),
+	}
+
+	// The superseded authority re-evaluates the SAME commit (interval mode is always
+	// "recurring" for the predecessor/superseded branch — the genesis/adoption modes
+	// are the descriptor's, not the version chain's).
+	sel := superseded.VersionSelected()
+	result := version.SelectVersionAncestry(version.AncestryInputs{
+		Authority:    "superseded",
+		Action:       "supersede",
+		Repository:   desc.Repository,
+		Component:    desc.Component,
+		TagPrefix:    desc.TagPrefix,
+		IntervalMode: "recurring",
+		To:           report.ToCommit,
+		Graph:        graph,
+		Refs:         refs,
+		Decision:     decisionInputs,
+		Superseded:   &sel,
+	})
+	if result.Reason != "" {
+		return fail(fmt.Errorf("promote refused: authenticated version ancestry failed (%s, §7.5/ADR-029)", result.Reason))
+	}
+	if result.Version == nil {
+		return fail(errors.New("promote refused: the supersede re-evaluation produced no clean tag — the target is not promotable (a late supersession / demotion / corrective-floor supersede is attestation-only, deferred)"))
+	}
+	ver, err := version.Parse(*result.Version)
+	if err != nil {
+		return fail(fmt.Errorf("promote refused: version ancestry produced an unparseable tag %q: %w", *result.Version, err))
+	}
+	channel := trust.ChannelClean
+	if ver.Trust != nil {
+		channel = trust.ChannelPrerelease
+	}
+	bump := claimed
+	if floor, ferr := evidence.ParseBump(report.Evidence.SemanticFloor); ferr == nil && floor > bump {
+		bump = floor
+	}
+	if result.TargetCore == nil {
+		return fail(errors.New("promote refused: version ancestry produced no target core"))
+	}
+
+	// A supersede PRESERVES the superseded's carried state — baseline, baseline core,
+	// target core, target bump, and the source lineage all carry unchanged (the same
+	// commit is re-evaluated, so no new interval is appended). Only clean_accepted
+	// flips when the promotion lands the clean tag, and the iterations collapse to
+	// the emitted tag's (none, for a clean promotion). The reader's supersede branch
+	// reconstructs exactly this shape (carried baseline + preserved lineage), so the
+	// resulting_state.digest reproduces byte-for-byte (§8.1/ADR-036).
+	st := sel.State
+	iterations := map[string]int{}
+	if ver.Trust != nil {
+		iterations[fmt.Sprintf("T%d", ver.Trust.Level)] = int(ver.Trust.Iteration)
+	}
+	state := version.VersionState{
+		Baseline:        st.Baseline,
+		BaselineCore:    st.BaselineCore,
+		TargetCore:      *result.TargetCore,
+		TargetBump:      st.TargetBump,
+		CleanAccepted:   ver.Trust == nil,
+		TargetIntervals: append([]string{}, st.TargetIntervals...),
+		Iterations:      iterations,
+		CorrectiveFloor: result.CorrectiveFloor,
+	}
+
+	// version_state.predecessor is the SUPERSEDED release's emitted tag — the chain
+	// link the reader validates (a supersede links to the release it re-evaluates,
+	// not to the interval anchor).
+	can := sel.CanonicalTags[0]
+	predecessorTag := &version.Binding{Tag: can.Tag, RefOID: can.RefOID, CommitOID: can.CommitOID}
+
+	return versionDecision{
+		Decision:       trust.Decision{Channel: channel, Bump: bump, Version: ver},
+		Component:      comp,
+		Predecessor:    result.VersionPredecessor,
+		Iteration:      1,
+		State:          state,
+		Action:         "supersede",
+		PredecessorTag: predecessorTag,
+	}, nil
+}
+
 // releaseStatementInput maps the verify report and the decision onto the
 // §8.1 predicate shape. Judgment calls, all documented and attested rather
 // than silently invented:
@@ -865,7 +991,7 @@ func compatResult(floor string) string {
 func parseRepositoryDigest(s string) (map[string]string, error) {
 	algo, hexStr, ok := strings.Cut(s, ":")
 	if !ok || algo == "" || hexStr == "" {
-		return nil, fmt.Errorf("--repository-digest is required with --predicate v0.2 and must be <algo>:<hex> (e.g. sha256:...), got %q", s)
+		return nil, fmt.Errorf("--repository-digest is required for a release/v0.2 emission and must be <algo>:<hex> (e.g. sha256:...), got %q", s)
 	}
 	return map[string]string{algo: hexStr}, nil
 }
@@ -910,7 +1036,7 @@ func releaseDigestDescs(ds []verify.PolicyDigestDescriptor) []attest.ReleaseDige
 // tag's raw ref OID exists only after the tag is created, so the caller fills it
 // after CreateSignedTag (dry-run leaves it null). Genesis only (M6 Phase B).
 func releaseV02Input(report *verify.Report, comp verify.ComponentEffective, decision trust.Decision,
-	vd versionDecision, desc *chain.BootstrapDescriptor, claimed evidence.Bump, blast string,
+	vd versionDecision, desc *chain.BootstrapDescriptor, supersede *chain.Predecessor, claimed evidence.Bump, blast string,
 	repoDigest map[string]string, tagName string, at time.Time) (attest.ReleaseV02Input, error) {
 
 	if report.PolicyState == nil {
@@ -927,6 +1053,11 @@ func releaseV02Input(report *verify.Report, comp verify.ComponentEffective, deci
 	var priorStateDigest *string
 	if recurring {
 		d := pred.ResultingStateDigest()
+		priorStateDigest = &d
+	}
+	if supersede != nil {
+		// A supersede chains to the SUPERSEDED release (not the interval anchor).
+		d := supersede.ResultingStateDigest()
 		priorStateDigest = &d
 	}
 	stateHex, err := version.StateDigest(
@@ -1002,6 +1133,18 @@ func releaseV02Input(report *verify.Report, comp verify.ComponentEffective, deci
 			Digest: digestSetOf(pred.ResultingStateDigest()),
 		}
 	}
+	genesis := !recurring
+	var supersedes *attest.ReleaseObjectRef
+	if supersede != nil {
+		// A supersede is never genesis; its prior_state is the superseded release's
+		// resulting state, and decision.supersedes binds the superseded attestation.
+		genesis = false
+		priorState = &attest.ReleaseStateIdentity{
+			ID:     "version-state:" + desc.Component + ":" + supersede.Tag(),
+			Digest: digestSetOf(supersede.ResultingStateDigest()),
+		}
+		supersedes = &attest.ReleaseObjectRef{ID: supersede.AttestationRef(), Digest: digestSetOf(supersede.AttestationDigest())}
+	}
 
 	// version_state.predecessor is the authenticated baseline binding (null new line).
 	var predecessorTag *attest.ReleaseTagIdentity
@@ -1042,7 +1185,7 @@ func releaseV02Input(report *verify.Report, comp verify.ComponentEffective, deci
 		PolicyState: policyState,
 		VersionState: attest.ReleaseVersionState{
 			Action:      vd.Action,
-			Genesis:     !recurring,
+			Genesis:     genesis,
 			Predecessor: predecessorTag,
 			PriorState:  priorState,
 			ResultingState: attest.ReleaseStateIdentity{
@@ -1073,7 +1216,7 @@ func releaseV02Input(report *verify.Report, comp verify.ComponentEffective, deci
 			Threshold:     report.Policy.Threshold,
 			Strategy:      report.Policy.Strategy,
 			Channel:       decision.Channel.String(),
-			Supersedes:    nil,
+			Supersedes:    supersedes,
 		},
 		Timestamp: at,
 	}, nil

@@ -15,6 +15,7 @@ import (
 	"github.com/semver-trust/semver-trust-go/conformance"
 	"github.com/semver-trust/semver-trust-go/evidence"
 	"github.com/semver-trust/semver-trust-go/internal/attest"
+	"github.com/semver-trust/semver-trust-go/internal/chain"
 	"github.com/semver-trust/semver-trust-go/internal/trust"
 	"github.com/semver-trust/semver-trust-go/internal/vcs"
 	"github.com/semver-trust/semver-trust-go/internal/verify"
@@ -54,6 +55,10 @@ func newPromoteCmd() *cobra.Command {
 		taggerName  string
 		taggerEmail string
 		dryRun      bool
+
+		// The v0.10 supersede surface (§8.1/ADR-030; opt-in, requires a descriptor).
+		bootstrapDescriptor string
+		repositoryDigest    string
 	)
 
 	cmd := &cobra.Command{
@@ -132,6 +137,23 @@ and prints the would-be promotion without writing anything.`,
 			if err != nil {
 				return fmt.Errorf("promote refused: --tag %s does not resolve to a commit: %w", tag, err)
 			}
+
+			// ---- v0.10 supersede path (§7.3/§7.5/ADR-030): when a bootstrap
+			// descriptor is supplied, the promotion re-evaluates the AUTHENTICATED
+			// accepted chain head at its own commit under the §7.5 superseded
+			// authority and emits a release/v0.2 that supersedes the prior
+			// attestation and advances the chain to the clean tag. The v0.1 path
+			// below stays byte-for-byte when no descriptor is supplied. --------
+			if bootstrapDescriptor != "" {
+				return promoteSupersede(cmd, promoteSupersedeInputs{
+					repoPath: repoPath, policyPath: policyPath, component: component,
+					descriptorPath: bootstrapDescriptor, repositoryDigest: repositoryDigest,
+					tag: tag, cleanVer: cleanVer, toCommit: toCommit, blastOverride: blast,
+					dryRun: dryRun, jsonOut: jsonOut, tagSigner: tagSigner, attSigner: attSigner,
+					taggerName: taggerName, taggerEmail: taggerEmail, at: at,
+				})
+			}
+
 			prior, err := priorRelease(repoPath, tag)
 			if err != nil {
 				return err
@@ -297,10 +319,236 @@ and prints the would-be promotion without writing anything.`,
 	f.StringVar(&taggerName, "tagger-name", "", "tagger name; empty resolves git config user.name")
 	f.StringVar(&taggerEmail, "tagger-email", "", "tagger email; empty resolves git config user.email")
 	f.BoolVar(&dryRun, "dry-run", false, "evaluate and decide, print the would-be promotion, write nothing")
+	f.StringVar(&bootstrapDescriptor, "bootstrap-descriptor", "", "out-of-band v0.10 bootstrap descriptor (§5.4/§7.5, ADR-028/029); when supplied, promotion re-evaluates the accepted chain head under the authenticated §7.5 supersede authority and emits a release/v0.2. Must be supplied from outside the repository")
+	f.StringVar(&repositoryDigest, "repository-digest", "", "canonical repository identity digest (<algo>:<hex>, §4.3) bound into a release/v0.2 supersede; required with --bootstrap-descriptor")
 	if err := cmd.MarkFlagRequired("tag"); err != nil {
 		panic(err)
 	}
 	return cmd
+}
+
+// promoteSupersedeInputs carries the v0.10 supersede path's parameters out of the
+// RunE closure (§7.3/§7.5/ADR-030).
+type promoteSupersedeInputs struct {
+	repoPath         string
+	policyPath       string
+	component        string
+	descriptorPath   string
+	repositoryDigest string
+	tag              string
+	cleanVer         version.Version
+	toCommit         string
+	blastOverride    string
+	dryRun           bool
+	jsonOut          bool
+	tagSigner        ssh.Signer
+	attSigner        ssh.Signer
+	taggerName       string
+	taggerEmail      string
+	at               time.Time
+}
+
+// promoteSupersede runs the v0.10 promotion (§7.3/§7.5/ADR-030): it authenticates
+// the accepted chain, re-evaluates the superseded release at its OWN commit under
+// the §7.5 superseded authority (verify.Options.Supersede — a plain recurring verify
+// would discover the head and abort promotion_required, its interval being P..P),
+// and emits a release/v0.2 that supersedes the prior attestation and advances the
+// chain to the clean tag (§8.1/ADR-036). The claimed bump and blast carry from the
+// superseded attestation; only the accumulated evidence moves.
+func promoteSupersede(cmd *cobra.Command, in promoteSupersedeInputs) error {
+	desc, err := chain.LoadBootstrapDescriptor(in.descriptorPath, in.repoPath)
+	if err != nil {
+		return fmt.Errorf("promote refused: %w", err)
+	}
+	repoDigest, err := parseRepositoryDigest(in.repositoryDigest)
+	if err != nil {
+		return fmt.Errorf("promote refused: %w", err)
+	}
+
+	// The attestation verifier is built from the policy in the superseded commit's
+	// tree; it fresh-verifies every stored release/v0.2 so the chain head is trusted,
+	// never claimed (§7.5/ADR-027).
+	av, err := verify.AttestationVerifier(verify.Options{
+		RepoPath: in.repoPath, To: in.toCommit, PolicyPath: in.policyPath,
+		Component: in.component, VerifyTime: in.at,
+	})
+	if err != nil {
+		return fmt.Errorf("promote refused: %w", err)
+	}
+	if av == nil {
+		return errors.New("promote refused: the policy declares no attestation signers, so the accepted chain cannot be verified — a v0.10 supersede needs [identity] attestation_signers (§9)")
+	}
+
+	superseded, anchor, err := chain.SupersedeHead(in.repoPath, desc.Repository, desc.Component, av, in.at)
+	if err != nil {
+		return fmt.Errorf("promote refused: %w", err)
+	}
+	if superseded == nil {
+		return fmt.Errorf("promote refused: no accepted release/v0.2 chain head for component %q — there is nothing to supersede (§7.5/ADR-029)", desc.Component)
+	}
+	// The chain head the reader selected MUST be the tag the operator is promoting:
+	// a promotion supersedes a specific release, not "whatever the head happens to be".
+	if superseded.Tag() != in.tag {
+		return fmt.Errorf("promote refused: --tag %s is not the accepted chain head (%s @ %s) — a promotion supersedes the accepted head (§7.3/§7.5)", in.tag, superseded.Tag(), shortSHA(superseded.To()))
+	}
+	if superseded.To() != in.toCommit {
+		return fmt.Errorf("promote refused: chain head %s resolves to %s, not --tag %s's commit %s", superseded.Tag(), shortSHA(superseded.To()), in.tag, shortSHA(in.toCommit))
+	}
+
+	// The claimed bump and blast carry from the superseded release/v0.2 (§7.3: the
+	// same source, only the evidence moved); --blast overrides the carried score.
+	claimed, err := evidence.ParseBump(superseded.ClaimedBump())
+	if err != nil {
+		return fmt.Errorf("promote refused: the superseded attestation's claimed bump is unusable: %w", err)
+	}
+	carriedBlast := superseded.Blast()
+	if in.blastOverride != "" {
+		carriedBlast = in.blastOverride
+	}
+	blastScore, err := trust.ParseBlast(carriedBlast)
+	if err != nil {
+		return fmt.Errorf("--blast: %w", err)
+	}
+
+	// ---- §7.3 step 2: re-run §10 steps 1–7 at the SAME commit in supersede mode.
+	// Supersede re-runs the superseded's OWN interval via the caller-supplied anchor
+	// (its predecessor; nil → the descriptor's genesis interval). --------------
+	report, err := verify.Verify(verify.Options{
+		RepoPath:    in.repoPath,
+		To:          in.toCommit,
+		PolicyPath:  in.policyPath,
+		Component:   in.component,
+		VerifyTime:  in.at,
+		Bootstrap:   desc,
+		Supersede:   true,
+		Predecessor: anchor,
+	})
+	if err != nil {
+		return fmt.Errorf("promote refused: %w", err)
+	}
+
+	// ---- §7.3 step 3: decide the supersede under the §7.5 superseded authority.
+	vd, err := decidePromote(report, desc, in.repoPath, claimed, blastScore, superseded)
+	if err != nil {
+		return err
+	}
+	// Promotion is not re-cutting: a re-evaluation that does not reach the clean
+	// channel has not been promoted (§7.3, §7.2).
+	if vd.Decision.Channel != trust.ChannelClean {
+		return fmt.Errorf("promote refused: evidence has not changed the decision — %s still lands in the pre-release channel (effective %s, blast %s); promotion moves a release to the clean channel, it does not re-cut a new pre-release iteration (§7.3, §7.2)",
+			in.tag, vd.Component.Effective, carriedBlast)
+	}
+	if vd.Decision.Version.String() != in.cleanVer.String() {
+		return fmt.Errorf("promote refused: the decision would produce %s but the pre-release tag's core is %s (the tag and its attestation's recorded state disagree)",
+			vd.Decision.Version, in.cleanVer)
+	}
+	tagName := in.cleanVer.String()
+
+	// ---- §7.3 step 4: the clean tag lands on the identical SHA; never move it. -
+	if exists, err := vcs.TagExists(in.repoPath, tagName); err != nil {
+		return err
+	} else if exists {
+		return fmt.Errorf("promote refused: %w: %s is already published (a clean tag is created once, on the identical SHA, §7.3)",
+			vcs.ErrTagExists, tagName)
+	}
+
+	v02, err := releaseV02Input(report, vd.Component, vd.Decision, vd, desc, superseded, claimed, carriedBlast, repoDigest, tagName, in.at)
+	if err != nil {
+		return err
+	}
+
+	result := promoteResult{
+		DryRun:        in.dryRun,
+		Tag:           tagName,
+		PromotedFrom:  in.tag,
+		Channel:       vd.Decision.Channel.String(),
+		Version:       vd.Decision.Version.String(),
+		ToCommit:      report.ToCommit,
+		Bump:          vd.Decision.Bump.String(),
+		ClaimedBump:   claimed.String(),
+		SemanticFloor: report.Evidence.SemanticFloor,
+		Effective:     vd.Component.Effective,
+		Own:           vd.Component.Own,
+		Blast:         carriedBlast,
+		Strategy:      report.Policy.Strategy,
+		Supersedes:    superseded.AttestationRef(),
+		PredicateType: attest.PredicateReleaseV02,
+		Report:        report,
+	}
+
+	if in.dryRun {
+		// Preview: no tag is created, so emission.tag stays null.
+		payload, err := attest.BuildReleaseV02Statement(v02)
+		if err != nil {
+			return err
+		}
+		return result.render(cmd, in.jsonOut, payload)
+	}
+
+	// ---- §7.3 step 4 (emit): the release/v0.2 arm REORDERS — emission.tag binds
+	// the signed tag object's raw ref OID, which exists only after the tag is
+	// created, and signed bytes are frozen. ADR-036 excludes emission from the
+	// resulting_state.digest, so the state hash is already stable; only the emission
+	// block needs the OID. An Emit/store failure best-effort deletes the tag (an
+	// orphan tag carries no release attestation, and verify never trusts one). -----
+	releaseSchema, err := conformance.Vector("schemas/release-v0.2.json")
+	if err != nil {
+		return err
+	}
+	emitter, err := attest.NewReleaseV02Emitter(in.attSigner, releaseSchema)
+	if err != nil {
+		return err
+	}
+	message := fmt.Sprintf("%s\n\nSemVer-Trust promotion of %s: channel clean, effective trust %s (§7.3, same SHA).\n",
+		tagName, in.tag, vd.Component.Effective)
+	if err := vcs.CreateSignedTag(in.repoPath, tagName, report.ToCommit, in.taggerName, in.taggerEmail, message, in.at, in.tagSigner); err != nil {
+		return err
+	}
+	peeled, err := vcs.TagRefs(in.repoPath)
+	if err != nil {
+		_ = vcs.DeleteTag(in.repoPath, tagName)
+		return err
+	}
+	ref, ok := peeled[tagName]
+	if !ok {
+		_ = vcs.DeleteTag(in.repoPath, tagName)
+		return fmt.Errorf("promote refused: created tag %q is absent from the ref-set; cannot bind version_state.emission", tagName)
+	}
+	v02.VersionState.Emission.Tag = &attest.ReleaseTagIdentity{
+		Name:            tagName,
+		RawRefOID:       ref.RefOID,
+		PeeledCommitOID: ref.CommitOID,
+	}
+	emission, err := emitter.Emit(v02)
+	if err != nil {
+		_ = vcs.DeleteTag(in.repoPath, tagName)
+		return err
+	}
+	// A partial or failed store must roll the tag back too (the reorder created it
+	// before the store): a tag with no complete release attestation is the orphan
+	// state the reorder exists to prevent. Already-written attestation refs are inert
+	// without the tag — surfaced for the operator to prune, not deleted.
+	refs, err := attest.StoreForSubjects(
+		attest.GitRefStore{Path: in.repoPath}, []string{report.ToCommit, tagName}, emission.Envelope)
+	if err != nil {
+		_ = vcs.DeleteTag(in.repoPath, tagName)
+		if len(refs) > 0 {
+			return fmt.Errorf("promote refused: storing the release/v0.2 attestation failed after %d of 2 subjects; the tag was rolled back, prune the partial attestation refs %v: %w",
+				len(refs), refs, err)
+		}
+		return fmt.Errorf("promote refused: storing the release/v0.2 attestation failed; the tag was rolled back: %w", err)
+	}
+	result.Signer = emission.KeyID
+	result.StoredRefs = refs
+	return result.render(cmd, in.jsonOut, nil)
+}
+
+// shortSHA abbreviates a commit SHA for diagnostics, tolerating short inputs.
+func shortSHA(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }
 
 // priorReleaseInfo is what a promotion carries over from the release it

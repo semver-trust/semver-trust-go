@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/semver-trust/semver-trust-go/internal/attest"
@@ -521,6 +522,18 @@ func (p *Predecessor) ResultingStateDigest() string {
 	return "sha256:" + p.head.resultDigest
 }
 
+// ClaimedBump is the head's decision.claimed_bump — the change-set classification a
+// promotion carries over unchanged (§7.3: the same source, only the evidence moved).
+func (p *Predecessor) ClaimedBump() string {
+	return p.head.doc.Predicate.Decision.ClaimedBump
+}
+
+// Blast is the head's §6.2 blast-radius score, read from its evidence.blast_radius
+// identity ("blast:<score>"). A promotion carries it over unless overridden (§7.3).
+func (p *Predecessor) Blast() string {
+	return strings.TrimPrefix(p.head.doc.Predicate.Evidence.BlastRadius.ID, "blast:")
+}
+
 // To is the head's release-target commit (the recurring interval's P).
 func (p *Predecessor) To() string { return p.head.to }
 
@@ -612,8 +625,12 @@ type releaseV02Doc struct {
 			AuthorityIdentity  digestDescriptor   `json:"authority_identity"`
 		} `json:"policy_state"`
 		VersionState versionStateDoc `json:"version_state"`
-		Decision     struct {
-			Supersedes *objectIdentity `json:"supersedes"`
+		Evidence     struct {
+			BlastRadius objectIdentity `json:"blast_radius"`
+		} `json:"evidence"`
+		Decision struct {
+			ClaimedBump string          `json:"claimed_bump"`
+			Supersedes  *objectIdentity `json:"supersedes"`
 		} `json:"decision"`
 	} `json:"predicate"`
 }

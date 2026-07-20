@@ -32,22 +32,24 @@ semver-trust promote [flags]
 ### Options
 
 ```
-      --allowed-signers string       filesystem allowed-signers override; empty resolves the policy's identity.human.allowed_signers from the tag's tree
-      --attest-key string            OpenSSH private key signing the release attestation (attestation namespace; may equal --tag-key)
-      --attestation-signers string   filesystem attestation-signer registry; overrides the policy. Empty resolves [identity] attestation_signers from the tag's tree (§9); if the policy declares none either, reviews cannot be verified and classify none
-      --blast string                 override the §6.2 blast-radius score (low|moderate|high); empty carries the prior attestation's score
-      --component string             component to promote (tag prefix and attestation component); empty = the single/root component
-      --dry-run                      evaluate and decide, print the would-be promotion, write nothing
-      --gpg-keyring string           armored OpenPGP public keyring for GPG-signed commits; overrides the policy. Empty resolves [identity.human] gpg_keyring from the tag's tree (§9); if the policy declares none either, the GPG key family is unverifiable and fails closed
-  -h, --help                         help for promote
-      --json                         emit a structured JSON result instead of the human summary
-      --policy string                policy file path within the tag's tree (default ".semver-trust/policy.toml")
-      --repo string                  repository to promote in (default ".")
-      --tag string                   existing pre-release trust tag to promote (required; must parse as a §7.1 trust version)
-      --tag-key string               OpenSSH private key signing the clean tag (git namespace)
-      --tagger-email string          tagger email; empty resolves git config user.email
-      --tagger-name string           tagger name; empty resolves git config user.name
-      --verify-time string           verification instant (RFC3339); empty = now at the CLI boundary
+      --allowed-signers string        filesystem allowed-signers override; empty resolves the policy's identity.human.allowed_signers from the tag's tree
+      --attest-key string             OpenSSH private key signing the release attestation (attestation namespace; may equal --tag-key)
+      --attestation-signers string    filesystem attestation-signer registry; overrides the policy. Empty resolves [identity] attestation_signers from the tag's tree (§9); if the policy declares none either, reviews cannot be verified and classify none
+      --blast string                  override the §6.2 blast-radius score (low|moderate|high); empty carries the prior attestation's score
+      --bootstrap-descriptor string   out-of-band v0.10 bootstrap descriptor (§5.4/§7.5, ADR-028/029); when supplied, promotion re-evaluates the accepted chain head under the authenticated §7.5 supersede authority and emits a release/v0.2. Must be supplied from outside the repository
+      --component string              component to promote (tag prefix and attestation component); empty = the single/root component
+      --dry-run                       evaluate and decide, print the would-be promotion, write nothing
+      --gpg-keyring string            armored OpenPGP public keyring for GPG-signed commits; overrides the policy. Empty resolves [identity.human] gpg_keyring from the tag's tree (§9); if the policy declares none either, the GPG key family is unverifiable and fails closed
+  -h, --help                          help for promote
+      --json                          emit a structured JSON result instead of the human summary
+      --policy string                 policy file path within the tag's tree (default ".semver-trust/policy.toml")
+      --repo string                   repository to promote in (default ".")
+      --repository-digest string      canonical repository identity digest (<algo>:<hex>, §4.3) bound into a release/v0.2 supersede; required with --bootstrap-descriptor
+      --tag string                    existing pre-release trust tag to promote (required; must parse as a §7.1 trust version)
+      --tag-key string                OpenSSH private key signing the clean tag (git namespace)
+      --tagger-email string           tagger email; empty resolves git config user.email
+      --tagger-name string            tagger name; empty resolves git config user.name
+      --verify-time string            verification instant (RFC3339); empty = now at the CLI boundary
 ```
 
 ### SEE ALSO

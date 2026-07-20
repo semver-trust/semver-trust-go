@@ -124,6 +124,22 @@ func Verify(opts Options) (*Report, error) {
 	return verifyWith(opts, pol)
 }
 
+// AttestationVerifier loads the policy from opts.To's tree and builds the
+// attestation verifier the pipeline uses. The supersede path (promote) needs it to
+// discover the accepted chain head (chain.SupersedeHead) before running Verify.
+func AttestationVerifier(opts Options) (*attest.Verifier, error) {
+	policyBytes, err := readTreeFile(opts.RepoPath, opts.To, opts.PolicyPath)
+	if err != nil {
+		return nil, abort(stepLoadPolicy,
+			fmt.Errorf("policy file %q not found in %s's tree: %w", opts.PolicyPath, opts.To, err))
+	}
+	pol, err := policy.Parse(policyBytes)
+	if err != nil {
+		return nil, abort(stepLoadPolicy, err)
+	}
+	return buildAttestationVerifier(opts, pol, opts.RepoPath)
+}
+
 // verifyWith runs §10 steps 2–7 against an already-loaded policy.
 func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 	at := opts.VerifyTime
