@@ -4,11 +4,15 @@
 # Release pipeline (WS2b). Triggered by pushing a `v*` tag, or dispatched at an
 # existing tag ref (so v0.1.0 can be published retroactively). Three jobs:
 #
-#   verify     — the dogfood gate (enforced, blocking): re-run spec §10
-#                steps 1-7 over root..TAG at the tag's RECORDED attestation
-#                instant. The maintainer's temp GPG key expires 2026-08-01, so
-#                the wall clock must NOT be used; the timestamp comes from the
-#                release attestation stored under refs/attestations/<tag>/*.
+#   verify     — the dogfood gate (enforced, blocking): re-verify the release at
+#                the tag's RECORDED attestation instant (never the wall clock —
+#                the maintainer's temp GPG key expires 2026-08-01). The path
+#                depends on the attestation predicate: a default release/v0.1 tag
+#                re-derives the decision over root..TAG; a v0.10 recurring
+#                release/v0.2 tag verifies the chain under the out-of-band
+#                bootstrap descriptor (the BOOTSTRAP_DESCRIPTOR repo variable) and
+#                confirms the descriptor binds the tag's tree. Both read the
+#                instant from refs/attestations/<tag>/*.
 #   goreleaser — build + publish archives, checksums, SBOMs, and keyless cosign
 #                signatures via .goreleaser.yaml (needs a green verify).
 #   badge      — compose the shields.io endpoint badge from verify's effective
@@ -58,40 +62,132 @@ jobs:
       - name: Build semver-trust
         run: go build -o semver-trust ./cmd/semver-trust
 
-      - name: Extract the tag's recorded attestation timestamp
+      - name: Extract the tag's recorded attestation facts
         id: ts
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          ref=$(git for-each-ref "refs/attestations/${TAG}/*" --format='%(refname)' | head -1)
-          if [ -z "${ref}" ]; then
-            echo "::error::no release attestation ref under refs/attestations/${TAG}/ — run the release ceremony (docs/release-runbook.md) before publishing."
+          # Collect EVERY blob under the tag subject (the ref namespace is
+          # content-addressed and can hold more than one), then require exactly one
+          # release envelope — so the facts below come from the tag's single release
+          # attestation, not an arbitrary/stale/extra blob a pushed ref could add.
+          att_dir="${RUNNER_TEMP}/tag-attestations"
+          rm -rf "${att_dir}"; mkdir -p "${att_dir}"
+          n=0
+          while read -r oid; do
+            [ -n "${oid}" ] || continue
+            git cat-file blob "${oid}" >"${att_dir}/${n}.json"
+            n=$((n + 1))
+          done < <(git for-each-ref "refs/attestations/${TAG}/*" --format='%(objectname)')
+          if [ "${n}" -eq 0 ]; then
+            echo "::error::no attestation ref under refs/attestations/${TAG}/ — run the release ceremony (docs/release-runbook.md or docs/recurring-release-runbook.md) before publishing."
             exit 1
           fi
-          ts=$(git cat-file blob "$(git rev-parse "${ref}")" | \
-            python3 -c 'import json,base64,sys; e=json.load(sys.stdin); print(json.loads(base64.b64decode(e["payload"]))["predicate"]["timestamp"])')
-          echo "Using recorded attestation timestamp ${ts} (from ${ref})."
-          echo "timestamp=${ts}" >>"${GITHUB_OUTPUT}"
+          # The predicate type selects the verify path (default v0.1 vs the v0.10
+          # recurring chain, v0.2), and timestamp is the recorded instant (ADR-018) the
+          # re-verification runs at. The badge trust is NOT taken from here — for v0.2 it
+          # comes from the verified chain head (verify --chain-head); for v0.1 from the
+          # fresh verify report.
+          #
+          # SECURITY: these blobs are NOT yet signature/schema-verified, so every field
+          # is untrusted. Never eval or shell-interpolate them — parse as data and write
+          # the step outputs via GITHUB_OUTPUT's random-delimiter format, which a hostile
+          # value cannot break out of to inject extra outputs. The values are re-checked
+          # downstream (predicate by the case, timestamp by verify's RFC3339 parse).
+          python3 -c '
+          import base64, glob, json, os, secrets, sys
+          att_dir, tag = sys.argv[1], sys.argv[2]
+          releases = []
+          for f in sorted(glob.glob(os.path.join(att_dir, "*.json"))):
+              try:
+                  p = json.loads(base64.b64decode(json.load(open(f))["payload"]))
+              except Exception:
+                  continue
+              if str(p.get("predicateType", "")).startswith("https://semver-trust.dev/release/"):
+                  releases.append(p)
+          if len(releases) != 1:
+              print("::error::expected exactly one release attestation under "
+                    "refs/attestations/%s/, found %d — the tag-scoped store is ambiguous "
+                    "or tampered." % (tag, len(releases)))
+              sys.exit(1)
+          p = releases[0]; pred = p["predicate"]
+          out = {
+              "predicate": str(p["predicateType"]),
+              "timestamp": str(pred["timestamp"]),
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              for k, v in out.items():
+                  d = "ghd_" + secrets.token_hex(16)
+                  fh.write("%s<<%s\n%s\n%s\n" % (k, d, v, d))
+          print("Release attestation under %s: predicate %s, recorded instant %s."
+                % (tag, out["predicate"], out["timestamp"]))
+          ' "${att_dir}" "${TAG}"
 
-      - name: Verify this release (spec §10 steps 1-7)
+      - name: Verify this release (spec §10)
         id: verify
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
           TS: ${{ steps.ts.outputs.timestamp }}
+          PREDICATE: ${{ steps.ts.outputs.predicate }}
+          DESCRIPTOR: ${{ vars.BOOTSTRAP_DESCRIPTOR }}
         run: |
           set -euo pipefail
-          ./semver-trust verify \
-            --repo . \
-            --from '' \
-            --to "${TAG}" \
-            --gpg-keyring .semver-trust/gpg-keyring.asc \
-            --attestation-signers .semver-trust/attestation_signers \
-            --verify-time "${TS}" \
-            --json >verify-report.json
-          effective=$(jq -r '.propagation as $p
-            | (first($p.components[] | select(.name == $p.target)) // $p.components[0])
-            | .effective' verify-report.json)
+          case "${PREDICATE}" in
+          https://semver-trust.dev/release/v0.1)
+            # Default path (unchanged): re-derive the decision from root..TAG at the
+            # recorded instant, and read the effective trust from the fresh report.
+            ./semver-trust verify \
+              --repo . \
+              --from '' \
+              --to "${TAG}" \
+              --gpg-keyring .semver-trust/gpg-keyring.asc \
+              --attestation-signers .semver-trust/attestation_signers \
+              --verify-time "${TS}" \
+              --json >verify-report.json
+            effective=$(jq -r '.propagation as $p
+              | (first($p.components[] | select(.name == $p.target)) // $p.components[0])
+              | .effective' verify-report.json)
+            ;;
+          https://semver-trust.dev/release/v0.2)
+            # v0.10 recurring chain. Its authenticated authority is the OUT-OF-BAND
+            # bootstrap descriptor (ADR-028), supplied as a repository variable and
+            # materialized OUTSIDE the checkout so the in-repo-path guard accepts it.
+            if [ -z "${DESCRIPTOR}" ]; then
+              echo "::error::a release/v0.2 tag needs the BOOTSTRAP_DESCRIPTOR repository variable — the out-of-band v0.10 authority (docs/recurring-release-runbook.md)."
+              exit 1
+            fi
+            printf '%s' "${DESCRIPTOR}" >"${RUNNER_TEMP}/bootstrap-descriptor.json"
+            desc="${RUNNER_TEMP}/bootstrap-descriptor.json"
+            # `verify --chain-head` is self-contained: it authenticates the descriptor
+            # against ${TAG}'s tree (§5.4/ADR-028 — policy + trust-material digests),
+            # fresh-verifies every chain member (signature + hash-link), and reports the
+            # unique accepted head from the VERIFIED object (not a store blob). The head
+            # MUST be this tag — else we would be publishing a non-head release — and the
+            # badge trust is the head's verified effective, the same object the gate
+            # accepted.
+            head=$(./semver-trust verify --repo . --to "${TAG}" \
+              --bootstrap-descriptor "${desc}" --verify-time "${TS}" --chain-head --json)
+            printf '%s\n' "${head}"
+            head_tag=$(printf '%s' "${head}" | jq -r '.tag')
+            if [ "${head_tag}" != "${TAG}" ]; then
+              echo "::error::the accepted chain head is '${head_tag}', not the pushed tag '${TAG}' — refusing to publish a non-head release/v0.2."
+              exit 1
+            fi
+            effective=$(printf '%s' "${head}" | jq -r '.effective')
+            ;;
+          *)
+            echo "::error::unknown release predicate '${PREDICATE}'."
+            exit 1
+            ;;
+          esac
+          # Defensive: the badge level comes from a verified source (the fresh v0.1
+          # report, or the v0.2 chain head), but constrain it to a real level anyway
+          # before it flows to the badge.
+          case "${effective}" in
+            T0|T1|T2|T3) ;;
+            *) echo "::error::effective trust '${effective}' is not a valid level (T0-T3)."; exit 1 ;;
+          esac
           echo "Verified at effective ${effective}."
           echo "effective=${effective}" >>"${GITHUB_OUTPUT}"
 
@@ -100,6 +196,9 @@ jobs:
         with:
           name: verify-report
           path: verify-report.json
+          # A v0.2 (v0.10 recurring) tag verifies at the head and emits no report;
+          # the badge trust comes from the attestation instead. Don't fail the upload.
+          if-no-files-found: ignore
 
   goreleaser:
     name: goreleaser (build + publish)

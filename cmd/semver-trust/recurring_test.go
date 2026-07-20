@@ -109,6 +109,85 @@ func setupRecurringChain(t *testing.T) (repo, descPath, foundingCommit, genesisC
 	return repo, descPath, foundingCommit, genesisCommit, newCommit
 }
 
+// TestVerifyChainHead proves `verify --chain-head` fresh-verifies the v0.10 chain
+// and reports the accepted head's tag + recorded effective trust — the verified
+// object a release badge reads, rather than an unverified store blob. Here the head
+// is the genesis v0.1.0 (clean, T2).
+func TestVerifyChainHead(t *testing.T) {
+	repo, descPath, _, genesisCommit, _ := setupRecurringChain(t)
+
+	out, err := runCommand(t, "verify", "--repo", repo, "--to", "main",
+		"--bootstrap-descriptor", descPath, "--verify-time", releaseEpoch,
+		"--chain-head", "--json")
+	if err != nil {
+		t.Fatalf("verify --chain-head: %v\n%s", err, out)
+	}
+	var head map[string]string
+	if err := json.Unmarshal([]byte(out), &head); err != nil {
+		t.Fatalf("chain-head JSON does not parse: %v\n%s", err, out)
+	}
+	if head["tag"] != "v0.1.0" {
+		t.Errorf("chain head tag = %q, want v0.1.0 (the accepted head)", head["tag"])
+	}
+	if head["to_commit"] != genesisCommit {
+		t.Errorf("chain head to_commit = %q, want the genesis commit %s", head["to_commit"], genesisCommit)
+	}
+	if head["effective"] != "T2" {
+		t.Errorf("chain head effective = %q, want T2 (the head's recorded trust)", head["effective"])
+	}
+	if head["resulting_state_digest"] == "" {
+		t.Error("chain head resulting_state_digest is empty")
+	}
+
+	// --chain-head without a descriptor is refused (it is the v0.10 authority).
+	if _, e := runCommand(t, "verify", "--repo", repo, "--to", "main", "--chain-head"); e == nil {
+		t.Error("verify --chain-head without --bootstrap-descriptor should be refused")
+	}
+
+	// A tampered descriptor is refused: --chain-head is self-contained — it
+	// authenticates the descriptor's pinned digests against TO's tree itself
+	// (§5.4/ADR-028), not merely on repository/component match.
+	raw, err := os.ReadFile(descPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d map[string]any
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatal(err)
+	}
+	d["policy_digest"] = "sha256:" + strings.Repeat("0", 64)
+	b, _ := json.Marshal(d)
+	badPath := t.TempDir() + "/bad-descriptor.json"
+	if err := os.WriteFile(badPath, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, e := runCommand(t, "verify", "--repo", repo, "--to", "main",
+		"--bootstrap-descriptor", badPath, "--verify-time", releaseEpoch, "--chain-head"); e == nil ||
+		!strings.Contains(e.Error(), "does not bind") {
+		t.Errorf("tampered descriptor: error = %v, want a tree-binding refusal", e)
+	}
+
+	// A FOREIGN descriptor — same repository/component and its policy/trust-material
+	// still bind the tree, but different bytes (a different bootstrap authority
+	// identity) — is rejected: the chain was not bootstrapped by it (§5.4/ADR-028),
+	// even though everything about the current tree matches.
+	var d2 map[string]any
+	if err := json.Unmarshal(raw, &d2); err != nil {
+		t.Fatal(err)
+	}
+	d2["verification_profile"] = "a-different-verifier" // changes the descriptor bytes, not the tree binding
+	b2, _ := json.Marshal(d2)
+	foreignPath := t.TempDir() + "/foreign-descriptor.json"
+	if err := os.WriteFile(foreignPath, b2, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, e := runCommand(t, "verify", "--repo", repo, "--to", "main",
+		"--bootstrap-descriptor", foreignPath, "--verify-time", releaseEpoch, "--chain-head"); e == nil ||
+		!strings.Contains(e.Error(), "was not bootstrapped by the supplied descriptor") {
+		t.Errorf("foreign descriptor: error = %v, want a bootstrap-authority refusal", e)
+	}
+}
+
 // TestVerifyRecurringAdvance is the C2a payoff: after a genesis release/v0.2 and a
 // later commit, verify DISCOVERS the accepted chain head and switches to the
 // recurring path — the interval is P..TO (only the post-genesis commit, not the
