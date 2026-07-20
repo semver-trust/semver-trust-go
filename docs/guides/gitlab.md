@@ -145,6 +145,11 @@ semver-trust-verify:
   allow_failure: true   # informational-first, as on GitHub; flip when ready
 ```
 
+The `--from ''` here is the default v0.3 path (walk from the root). On the opt-in
+v0.10 path, pass a `--bootstrap-descriptor` instead — supplied from outside the
+repository — and the exact interval is the authenticated one (spec ADR-027/028);
+`--from` is not used.
+
 For the release pipeline, GitLab's commit-signature API
 (`GET /projects/:id/repository/commits/:sha/signature`) is the hygiene-check
 substitute — note it returns a `verification_status` string

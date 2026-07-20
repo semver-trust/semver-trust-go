@@ -21,7 +21,9 @@ adds this repository's rules and wins where stricter.
    placeholder predicate-type URI. The real URIs are bound and frozen at
    v0.1 (spec ADR-013; maintainer freeze decision 2026-07-06):
    `https://semver-trust.dev/release/v0.1` and
-   `https://semver-trust.dev/review/v0.1`. Their additive-only evolution
+   `https://semver-trust.dev/review/v0.1`, with the additive
+   `https://semver-trust.dev/release/v0.2` and `.../review/v0.2` successors
+   bound for the v0.10 chain (spec ADR-030). Their additive-only evolution
    policy lives in the spec repository at
    <https://github.com/semver-trust/spec/blob/main/schemas/README.md>.
    Test fixtures use the real URIs with fake local subjects and test-only

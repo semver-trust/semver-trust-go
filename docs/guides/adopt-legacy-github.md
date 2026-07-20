@@ -110,11 +110,20 @@ strategy  = "demote"
 adoption_boundary = "v0.9.4"
 ```
 
-There is deliberately **no CLI flag** for this: the boundary is policy-pinned,
-so moving it is itself a meta-path commit at the required level, and the
-attestation's policy digest freezes which boundary produced each decision
-(the three binding properties: [policy reference](../reference/policy.md#policy--threshold-and-strategy)).
+The boundary is **policy-pinned**: moving it is itself a meta-path commit at the
+required level, and the attestation's policy digest freezes which boundary
+produced each decision (the three binding properties:
+[policy reference](../reference/policy.md#policy--threshold-and-strategy)).
 Make sure `.semver-trust/**` is in your meta-paths *before* this commit lands.
+
+Under the opt-in **v0.10 path** (spec ADR-028) the boundary's *authority* is an
+out-of-band **bootstrap descriptor** — the authenticated document a verifier
+supplies with `--bootstrap-descriptor`, held from *outside* the repository
+(distinct from "bootstrapping a repo," the greenfield setup its
+[sibling guide](bootstrap-github.md) walks). It does not weaken the "a verifier
+cannot move the boundary" property — it *authenticates* it: the in-policy
+`adoption_boundary` must match the descriptor's. Absent a descriptor, the
+policy-pinned value governs, exactly as this walkthrough shows.
 
 Verification now discloses the anchor on every run — and look at what the
 range contains:
@@ -174,20 +183,40 @@ inception":
 }
 ```
 
-**One sharp edge, disclosed** ([issue #70](https://github.com/semver-trust/semver-trust-go/issues/70)):
-with `--from ''` the version derivation starts fresh — this walkthrough
-produced `v0.1.0`, which sorts *below* the legacy `v0.9.4` line. Passing
-`--from v0.9.4` instead continues the line (`v0.10.0`) but currently omits
-the `from_is_adoption_boundary` disclosure even though the range is
-identical. Until the issue is resolved, decide which property your consumers
-need more — a continued version line, or the boundary marker in the
-attestation — and document your choice in the release notes.
+**The version line, continued** (spec ADR-029;
+[issue #70](https://github.com/semver-trust/semver-trust-go/issues/70), resolved).
+The walkthrough above ran the default v0.3 path (`--from ''`), which derives the
+version fresh — producing `v0.1.0`, which sorts *below* the legacy `v0.9.4` line —
+and forced an either/or between a continued version line and the boundary
+disclosure. The **v0.10 opt-in path removes the tradeoff**: supply a bootstrap
+descriptor whose `version_predecessor` binds the legacy tag (`v0.9.4`, with its
+raw ref and peeled commit OIDs), and the authenticated ancestry continues the line
+to `v0.10.0` **while** the boundary disclosure still rides into the attestation —
+both are independent authenticated facts, no longer a function of `--from`
+spelling. The v0.10 adoption release adds three flags (illustrative — this
+sub-step is not part of the executed walkthrough above; the descriptor is supplied
+from *outside* the repository):
+
+```sh
+semver-trust release --repo . --to HEAD \
+  --bootstrap-descriptor ../widget-descriptor.json \
+  --predicate v0.2 --repository-digest sha256:<repo-identity-digest> \
+  --claimed-bump minor --blast low \
+  --tag-key ~/.ssh/semver-trust-attest --attest-key ~/.ssh/semver-trust-attest \
+  --verify-time 2026-07-13T00:00:00Z
+```
+
+The v0.3 `--from ''` release above stays valid — it is how the published
+v0.1.x–v0.2.x chain verifies — but it carries the old tradeoff; the descriptor
+path is the one that continues the legacy line cleanly.
 
 ## 7. Moving the boundary later
 
 Don't plan to. The boundary is an admission recorded once, not a dial: moving
-it is a meta-path policy commit like any other (gated, visible in history),
-and ADR-026 carries a standing revisit trigger — repeated re-baselining is
-the abuse signature reviewers should look for. If more history later becomes
+it is a meta-path policy commit like any other (gated, visible in history) — and
+under the v0.10 path the out-of-band bootstrap descriptor must be re-issued to
+match, so the boundary cannot drift on the repo side alone (ADR-028). ADR-026
+carries a standing revisit trigger — repeated re-baselining is the abuse
+signature reviewers should look for. If more history later becomes
 verifiable (a key resurfaces), you *may* move the boundary earlier and
 disclose why; there is rarely a legitimate reason to move it later.

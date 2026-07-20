@@ -14,8 +14,9 @@ a release range — signatures, `Provenance:` trailers, and review attestations 
 aggregates it into a trust level (`T0`–`T3`) with path-scoped, transitively
 propagated flooring, and cuts trust-encoded, cryptographically attested
 releases. Low-trust releases sort *below* clean ones in ordinary SemVer
-precedence, so default dependency resolvers skip them with zero consumer-side
-tooling.
+precedence, so an ecosystem's default resolution defers them the way it already
+defers pre-releases — subject to per-ecosystem caveats, not a universal
+zero-tooling guarantee ([conformance coverage](docs/conformance-coverage.md)).
 
 ## Status
 
@@ -91,6 +92,14 @@ the same decision that put the clean `v0.1.0` tag on this commit. (The
 attestation refs are published by the maintainer's release ceremony; if the
 fetch returns nothing, the release has not yet pushed them upstream.)
 
+That command reproduces the published v0.1 chain from **in-tree** trust material
+— the v0.3 path. The opt-in **v0.10 path** closes the last gap: a v0.10 release is
+reproduced against an **out-of-band bootstrap descriptor supplied from outside the
+clone**, which *authenticates* the in-tree policy and registries by digest rather
+than trusting them because they happen to sit in the tree. This repository's own
+published releases are v0.1; the v0.10 chain is exercised by its
+[conformance coverage](docs/conformance-coverage.md) and end-to-end tests.
+
 **3. Explain the policy in effect.**
 
 ```sh
@@ -110,7 +119,8 @@ attestations give a review class; the §3.2 matrix maps the pair to `T0`–`T3`.
 A release's own trust is the **weakest link** over the commits touching each
 path scope, propagated as a floor across the internal dependency graph. The
 policy's decision table then maps effective trust and blast radius to a channel:
-clean, or the trust-tagged pre-release channel that default resolvers skip. See
+clean, or the trust-tagged pre-release channel that default resolution defers
+(subject to per-ecosystem caveats). See
 [docs/concepts.md](docs/concepts.md) for the full picture in plain language.
 
 ## Commands

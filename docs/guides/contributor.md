@@ -172,7 +172,8 @@ is not a *low level* — is in
 
 A release tagged `v1.4.0-t1.1` is telling consumers: "this content is final,
 one accountable human short of the clean bar; opt in knowingly." Default
-resolvers skip it, evidence can accumulate, and a later signed review promotes
+resolution defers it the way it defers any pre-release (subject to each
+ecosystem's rules), evidence can accumulate, and a later signed review promotes
 the *same commit* to `v1.4.0` — no rebuild, no new source (spec §7.3). If
 your commit is the reason a release demoted, the table above tells you which
 kind of fix applies.

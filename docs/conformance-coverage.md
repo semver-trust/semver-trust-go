@@ -58,9 +58,10 @@ target-lineage re-evaluation, and derived target core / iteration / exact tag /
 head-advance — is implemented and passes the suite over abstract chain state.
 This is the resolution of the go#70 dogfood finding (the version line and the
 adoption-boundary disclosure become independent authenticated facts, not a
-function of `--from` spelling). The **production** release path still derives
-versions from `FROM`; wiring `SelectVersionAncestry` into it — which is what
-actually closes go#70 — is tracked in #76.
+function of `--from` spelling). It is now **wired into production** behind the
+opt-in bootstrap descriptor (`--bootstrap-descriptor`, #76): the default v0.3 path
+still derives versions from `FROM`, while the v0.10 path derives the authenticated
+version line from the descriptor and the accepted chain head — which closed go#70.
 
 **What "publishing-profile enforced" covers today:** the §7.4/ADR-034
 resolver-routing claim evaluation (`publish.SelectPublishingProfile`) — registry
