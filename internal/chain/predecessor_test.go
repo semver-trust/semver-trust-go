@@ -5,6 +5,8 @@ package chain
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"os/exec"
 	"strings"
 	"testing"
@@ -112,23 +114,25 @@ func mkTag(t *testing.T, repo, name, commit string) (rawRefOID, peeledCommitOID 
 // state's digest is computed here (the same way the emitter's caller does), so a
 // stored release is internally consistent unless forceDigest overrides it.
 type releaseSpec struct {
-	repoID      string
-	component   string
-	tagPrefix   string
-	to          string
-	rawRefOID   string
-	emittedTag  string
-	genesis     bool
-	predecessor *version.Binding // nil at genesis
-	priorDigest *string          // "sha256:<hex>", nil at genesis
-	state       version.VersionState
-	action      string // version_state.action ("advance" if empty)
-	forceDigest string // override resulting_state.digest (bare hex) to synthesize tampering
+	repoID       string
+	component    string
+	tagPrefix    string
+	to           string
+	rawRefOID    string
+	emittedTag   string
+	genesis      bool
+	predecessor  *version.Binding // nil at genesis
+	priorDigest  *string          // "sha256:<hex>", nil at genesis
+	state        version.VersionState
+	action       string                   // version_state.action ("advance" if empty)
+	emissionNone bool                     // emit emission.kind "none" (an attestation-only supersede)
+	supersedes   *attest.ReleaseObjectRef // decision.supersedes (a supersede binds the superseded attestation)
+	forceDigest  string                   // override resulting_state.digest (bare hex) to synthesize tampering
 }
 
-// emitAndStore builds, signs, and stores a release/v0.2 for spec and returns its
-// resulting_state.digest (bare hex).
-func emitAndStore(t *testing.T, repoPath string, signer ssh.Signer, schema []byte, spec releaseSpec) string {
+// emitAndStoreEnv builds, signs, and stores a release/v0.2 for spec and returns its
+// resulting_state.digest (bare hex) and the raw envelope.
+func emitAndStoreEnv(t *testing.T, repoPath string, signer ssh.Signer, schema []byte, spec releaseSpec) (string, []byte) {
 	t.Helper()
 	digest, err := version.StateDigest(version.CanonicalStateMap(spec.component, spec.tagPrefix, spec.state, spec.priorDigest))
 	if err != nil {
@@ -158,6 +162,13 @@ func emitAndStore(t *testing.T, repoPath string, signer ssh.Signer, schema []byt
 	for _, id := range spec.state.TargetIntervals {
 		lineage = append(lineage, attest.ReleaseObjectRef{ID: id})
 	}
+	emTag := attest.ReleaseTagEmission{
+		Kind: "tag",
+		Tag:  &attest.ReleaseTagIdentity{Name: spec.emittedTag, RawRefOID: spec.rawRefOID, PeeledCommitOID: spec.to},
+	}
+	if spec.emissionNone {
+		emTag = attest.ReleaseTagEmission{Kind: "none"}
+	}
 	mode := "recurring"
 	if spec.genesis {
 		mode = "inception"
@@ -186,17 +197,14 @@ func emitAndStore(t *testing.T, repoPath string, signer ssh.Signer, schema []byt
 			AuthorityIdentity: attest.ReleaseDigestDescriptor{URI: "bootstrap:" + spec.component, Digest: map[string]string{"sha256": oid('f') + oid('f')}},
 		},
 		VersionState: attest.ReleaseVersionState{
-			Action:         specAction,
-			Genesis:        spec.genesis,
-			Predecessor:    predTag,
-			PriorState:     priorState,
-			ResultingState: attest.ReleaseStateIdentity{ID: "version-state:" + spec.component + ":" + spec.emittedTag, Digest: map[string]string{"sha256": wireDigest}},
-			TargetCore:     spec.state.TargetCore,
-			TargetBump:     spec.state.TargetBump,
-			Emission: attest.ReleaseTagEmission{
-				Kind: "tag",
-				Tag:  &attest.ReleaseTagIdentity{Name: spec.emittedTag, RawRefOID: spec.rawRefOID, PeeledCommitOID: spec.to},
-			},
+			Action:                 specAction,
+			Genesis:                spec.genesis,
+			Predecessor:            predTag,
+			PriorState:             priorState,
+			ResultingState:         attest.ReleaseStateIdentity{ID: "version-state:" + spec.component + ":" + spec.emittedTag, Digest: map[string]string{"sha256": wireDigest}},
+			TargetCore:             spec.state.TargetCore,
+			TargetBump:             spec.state.TargetBump,
+			Emission:               emTag,
 			TargetLineage:          lineage,
 			PendingCorrectiveFloor: spec.state.CorrectiveFloor,
 		},
@@ -207,8 +215,8 @@ func emitAndStore(t *testing.T, repoPath string, signer ssh.Signer, schema []byt
 			Authorship: attest.ReleaseAuthorship{Class: "human", CredentialIdentity: "alice@semver-trust.test"},
 			Review:     attest.ReleaseReviewRef{Class: "none"},
 		}},
-		Evidence: attest.ReleaseEvidence{BlastRadius: attest.ReleaseObjectRef{ID: "blast:low"}},
-		Decision: attest.ReleaseV02Decision{ClaimedBump: "minor", SemanticFloor: "minor", Threshold: "T2", Strategy: "demote", Channel: "clean"},
+		Evidence:  attest.ReleaseEvidence{BlastRadius: attest.ReleaseObjectRef{ID: "blast:low"}},
+		Decision:  attest.ReleaseV02Decision{ClaimedBump: "minor", SemanticFloor: "minor", Threshold: "T2", Strategy: "demote", Channel: "clean", Supersedes: spec.supersedes},
 		Timestamp: chainEpoch,
 	}
 
@@ -223,7 +231,14 @@ func emitAndStore(t *testing.T, repoPath string, signer ssh.Signer, schema []byt
 	if _, err := attest.StoreForSubjects(attest.GitRefStore{Path: repoPath}, []string{spec.to, spec.emittedTag}, emission.Envelope); err != nil {
 		t.Fatal(err)
 	}
-	return digest
+	return digest, emission.Envelope
+}
+
+// emitAndStore is emitAndStoreEnv keeping only the resulting-state digest.
+func emitAndStore(t *testing.T, repoPath string, signer ssh.Signer, schema []byte, spec releaseSpec) string {
+	t.Helper()
+	d, _ := emitAndStoreEnv(t, repoPath, signer, schema, spec)
+	return d
 }
 
 func genesisSpec(commit, rawRef string) releaseSpec {
@@ -370,6 +385,149 @@ func TestAcceptedChainHeadRecut(t *testing.T) {
 	if st.Baseline != nil || st.BaselineCore != "0.0.0" || st.TargetCore != "0.1.0" {
 		t.Errorf("recut head state baseline=%+v core=%s target=%s, want nil/0.0.0/0.1.0 (preserved, not the chain predecessor)",
 			st.Baseline, st.BaselineCore, st.TargetCore)
+	}
+}
+
+// TestAcceptedChainHeadSupersedePromotion: a PROMOTION supersede (an unpromoted
+// prerelease promoted to its clean tag at the SAME commit) is a valid chain head.
+// It preserves the superseded target — baseline (carried), target core, and lineage
+// unchanged — and its emitted clean tag makes the reconstructed state clean.
+func TestAcceptedChainHeadSupersedePromotion(t *testing.T) {
+	repo := initGitRepo(t)
+	signer := chainTestSigner(t)
+	schema := releaseSchema(t)
+
+	// Genesis PRERELEASE v0.1.0-t0.1 at c1.
+	c1 := mkCommit(t, repo, "genesis")
+	rawG, _ := mkTag(t, repo, "auth/v0.1.0-t0.1", c1)
+	gspec := releaseSpec{
+		repoID: "repo:test/auth", component: "auth", tagPrefix: "auth/",
+		to: c1, rawRefOID: rawG, emittedTag: "auth/v0.1.0-t0.1", genesis: true,
+		state: version.VersionState{
+			BaselineCore: "0.0.0", TargetCore: "0.1.0", TargetBump: "minor", CleanAccepted: false,
+			TargetIntervals: []string{version.GenesisIntervalID("auth", "inception")},
+			Iterations:      map[string]int{"T0": 1},
+		},
+	}
+	gd, genEnv := emitAndStoreEnv(t, repo, signer, schema, gspec)
+
+	// PROMOTION supersede → clean v0.1.0 at the SAME commit c1. Baseline/target/lineage
+	// PRESERVED; clean tag → CleanAccepted true, no iteration. decision.supersedes binds
+	// the genesis (superseded) attestation by its stable ref + content digest.
+	rawC, _ := mkTag(t, repo, "auth/v0.1.0", c1)
+	prior := "sha256:" + gd
+	genSum := sha256.Sum256(genEnv)
+	promotionSpec := func() releaseSpec {
+		return releaseSpec{
+			repoID: "repo:test/auth", component: "auth", tagPrefix: "auth/",
+			to: c1, rawRefOID: rawC, emittedTag: "auth/v0.1.0", genesis: false,
+			predecessor: &version.Binding{Tag: "auth/v0.1.0-t0.1", RefOID: rawG, CommitOID: c1},
+			priorDigest: &prior,
+			action:      "supersede",
+			supersedes: &attest.ReleaseObjectRef{
+				ID:     attest.EnvelopeRef(c1, genEnv),
+				Digest: map[string]string{"sha256": hex.EncodeToString(genSum[:])},
+			},
+			state: version.VersionState{
+				BaselineCore: "0.0.0", TargetCore: "0.1.0", TargetBump: "minor", CleanAccepted: true,
+				TargetIntervals: []string{version.GenesisIntervalID("auth", "inception")},
+				Iterations:      map[string]int{},
+			},
+		}
+	}
+	emitAndStore(t, repo, signer, schema, promotionSpec())
+
+	pred, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
+	if err != nil {
+		t.Fatalf("AcceptedChainHead: %v", err)
+	}
+	if pred == nil || pred.Tag() != "auth/v0.1.0" {
+		t.Fatalf("head = %v, want the promotion auth/v0.1.0", pred)
+	}
+	st := pred.VersionSelected().State
+	if !st.CleanAccepted || st.TargetCore != "0.1.0" || st.Baseline != nil {
+		t.Errorf("promotion head state = clean=%v target=%s baseline=%+v, want clean/0.1.0/nil (preserved)", st.CleanAccepted, st.TargetCore, st.Baseline)
+	}
+
+	// A supersede that does not bind decision.supersedes to the superseded attestation
+	// is refused: null and mismatched-ref both abort.
+	t.Run("null-supersedes", func(t *testing.T) {
+		repo := initGitRepo(t)
+		signer := chainTestSigner(t)
+		schema := releaseSchema(t)
+		c1 := mkCommit(t, repo, "genesis")
+		rawG, _ := mkTag(t, repo, "auth/v0.1.0-t0.1", c1)
+		g := gspec
+		g.to, g.rawRefOID = c1, rawG
+		gd, _ := emitAndStoreEnv(t, repo, signer, schema, g)
+		mkTag(t, repo, "auth/v0.1.0", c1)
+		p := promotionSpec()
+		p.to, p.rawRefOID = c1, mustRawRef(t, repo, "auth/v0.1.0")
+		p.predecessor = &version.Binding{Tag: "auth/v0.1.0-t0.1", RefOID: rawG, CommitOID: c1}
+		prior := "sha256:" + gd
+		p.priorDigest = &prior
+		p.supersedes = nil // the gap: no supersedes bound
+		emitAndStore(t, repo, signer, schema, p)
+		_, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
+		if err == nil || !strings.Contains(err.Error(), "null decision.supersedes") {
+			t.Errorf("null supersedes: error = %v, want a null-supersedes abort", err)
+		}
+	})
+
+	t.Run("mismatched-supersedes", func(t *testing.T) {
+		repo := initGitRepo(t)
+		signer := chainTestSigner(t)
+		schema := releaseSchema(t)
+		c1 := mkCommit(t, repo, "genesis")
+		rawG, _ := mkTag(t, repo, "auth/v0.1.0-t0.1", c1)
+		g := gspec
+		g.to, g.rawRefOID = c1, rawG
+		gd, _ := emitAndStoreEnv(t, repo, signer, schema, g)
+		mkTag(t, repo, "auth/v0.1.0", c1)
+		p := promotionSpec()
+		p.to, p.rawRefOID = c1, mustRawRef(t, repo, "auth/v0.1.0")
+		p.predecessor = &version.Binding{Tag: "auth/v0.1.0-t0.1", RefOID: rawG, CommitOID: c1}
+		prior := "sha256:" + gd
+		p.priorDigest = &prior
+		p.supersedes = &attest.ReleaseObjectRef{ID: "refs/attestations/" + oid('0') + "/deadbeef"} // wrong ref
+		emitAndStore(t, repo, signer, schema, p)
+		_, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
+		if err == nil || !strings.Contains(err.Error(), "does not identify the superseded attestation") {
+			t.Errorf("mismatched supersedes: error = %v, want a mismatched-supersedes abort", err)
+		}
+	})
+}
+
+// mustRawRef returns the raw ref OID of an existing tag.
+func mustRawRef(t *testing.T, repo, tag string) string {
+	t.Helper()
+	refs, err := vcs.TagRefs(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return refs[tag].RefOID
+}
+
+// An attestation-only supersede (emission.kind "none" — a demotion, late
+// supersession, or under-bump invalidation) emits no tag and does not advance the
+// head, so it is rejected as a chain head (deferred beyond the promotion case).
+func TestAcceptedChainHeadRejectsAttestationOnlySupersede(t *testing.T) {
+	repo := initGitRepo(t)
+	signer := chainTestSigner(t)
+	schema := releaseSchema(t)
+
+	gd := emitAndStore(t, repo, signer, schema, genesisSpec(oid('1'), oid('7')))
+	sup := advanceSpec(oid('1'), oid('7'), oid('1'), oid('8'), gd) // same To as genesis
+	sup.emittedTag = "auth/v0.1.0-super"
+	sup.action = "supersede"
+	sup.emissionNone = true
+	sup.state.TargetCore = "0.1.0"
+	sup.state.TargetIntervals = []string{version.GenesisIntervalID("auth", "inception")}
+	emitAndStore(t, repo, signer, schema, sup)
+
+	_, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
+	if err == nil || !strings.Contains(err.Error(), "attestation-only supersede is not a chain head") {
+		t.Errorf("attestation-only supersede head: error = %v, want a not-a-chain-head abort", err)
 	}
 }
 
@@ -532,7 +690,9 @@ func TestAcceptedChainHeadForgedPredecessorRawRefAborts(t *testing.T) {
 // with action "supersede" (attestation-only until C5) must NOT be reconstructed as
 // an advance-like chain head, and a genesis must be an advance, never a recut.
 func TestAcceptedChainHeadRejectsUnsupportedActions(t *testing.T) {
-	t.Run("supersede-on-chain", func(t *testing.T) {
+	t.Run("supersede-at-wrong-commit", func(t *testing.T) {
+		// A supersede must sit at the superseded release's commit; one at a new TO
+		// (advance-shaped) is refused.
 		repo := initGitRepo(t)
 		signer := chainTestSigner(t)
 		schema := releaseSchema(t)
@@ -541,8 +701,8 @@ func TestAcceptedChainHeadRejectsUnsupportedActions(t *testing.T) {
 		succ.action = "supersede"
 		emitAndStore(t, repo, signer, schema, succ)
 		_, err := AcceptedChainHead(repo, "repo:test/auth", "auth", chainVerifier(t, signer), chainEpoch)
-		if err == nil || !strings.Contains(err.Error(), "unsupported chain action") {
-			t.Errorf("supersede on the chain: error = %v, want an unsupported-chain-action abort", err)
+		if err == nil || !strings.Contains(err.Error(), "re-evaluates the same commit") {
+			t.Errorf("supersede at a new commit: error = %v, want a same-commit abort", err)
 		}
 	})
 
