@@ -31,6 +31,7 @@ semver-trust verify [flags]
       --allowed-signers string        filesystem allowed-signers override; empty resolves the policy's identity.human.allowed_signers from TO's tree
       --attestation-signers string    filesystem attestation-signer registry; overrides the policy. Empty resolves [identity] attestation_signers from TO's tree (§9); if the policy declares none either, reviews cannot be verified and classify none
       --bootstrap-descriptor string   out-of-band v0.10 bootstrap descriptor (§5.2/§5.4, ADR-027/028); when supplied, the release interval is the authenticated exact interval (inception root..TO, or adoption including the boundary) rather than FROM..TO. Must be supplied from outside the repository
+      --chain-head                    instead of verifying an interval, fresh-verify the v0.10 chain and report the accepted chain head's tag and recorded effective trust (§7.5/ADR-029); requires --bootstrap-descriptor
       --component string              workspace component to headline; empty = single/root component
       --from string                   previous release tag; empty = first release (root..TO, or boundary..TO under a policy-declared adoption_boundary, ADR-026)
       --gpg-keyring string            armored OpenPGP public keyring for GPG-signed commits; overrides the policy. Empty resolves [identity.human] gpg_keyring from TO's tree (§9); if the policy declares none either, the GPG key family is unverifiable and fails closed

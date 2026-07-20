@@ -534,6 +534,14 @@ func (p *Predecessor) Blast() string {
 	return strings.TrimPrefix(p.head.doc.Predicate.Evidence.BlastRadius.ID, "blast:")
 }
 
+// Effective is the head's recorded effective trust level (§6.1) — the decision the
+// verified accepted chain head attests. A consumer that wants the verified head's
+// trust (a release badge, say) reads it from HERE, the freshly-verified object, not
+// from an unverified store blob (the attestation store is not a trust anchor, §8.2).
+func (p *Predecessor) Effective() string {
+	return p.head.doc.Predicate.Trust.Effective
+}
+
 // To is the head's release-target commit (the recurring interval's P).
 func (p *Predecessor) To() string { return p.head.to }
 
@@ -625,7 +633,10 @@ type releaseV02Doc struct {
 			AuthorityIdentity  digestDescriptor   `json:"authority_identity"`
 		} `json:"policy_state"`
 		VersionState versionStateDoc `json:"version_state"`
-		Evidence     struct {
+		Trust        struct {
+			Effective string `json:"effective"`
+		} `json:"trust"`
+		Evidence struct {
 			BlastRadius objectIdentity `json:"blast_radius"`
 		} `json:"evidence"`
 		Decision struct {

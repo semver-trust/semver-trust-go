@@ -3,7 +3,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -27,6 +29,7 @@ func newVerifyCmd() *cobra.Command {
 		component           string
 		verifyTime          string
 		bootstrapDescriptor string
+		chainHead           bool
 		jsonOut             bool
 	)
 
@@ -72,6 +75,36 @@ the verifier.`,
 				descriptor = d
 			}
 
+			// --chain-head reports the AUTHENTICATED accepted chain head (§7.5/ADR-029)
+			// rather than verifying a proposed interval: it fresh-verifies every stored
+			// release/v0.2 and reports the unique head's recorded decision. It is the
+			// answer to "what release IS the verified accepted head, and what trust did
+			// it attest?" — for callers (e.g. a release badge) that must read the head's
+			// trust from the verified object, not an unverified store blob. Verifying at
+			// the head's own commit is otherwise promotion_required (an empty interval).
+			if chainHead {
+				if descriptor == nil {
+					return fmt.Errorf("verify refused: --chain-head requires --bootstrap-descriptor (the authenticated v0.10 chain authority)")
+				}
+				av, aerr := verify.AttestationVerifier(verify.Options{
+					RepoPath: repoPath, To: to, PolicyPath: policyPath, Component: component, VerifyTime: at,
+				})
+				if aerr != nil {
+					return fmt.Errorf("verify refused: %w", aerr)
+				}
+				if av == nil {
+					return fmt.Errorf("verify refused: the policy declares no attestation signers, so the accepted chain cannot be verified (§9)")
+				}
+				head, herr := chain.AcceptedChainHead(repoPath, descriptor.Repository, descriptor.Component, av, at)
+				if herr != nil {
+					return fmt.Errorf("verify refused: %w", herr)
+				}
+				if head == nil {
+					return fmt.Errorf("verify refused: no accepted release/v0.2 chain head for component %q (none published yet)", descriptor.Component)
+				}
+				return writeChainHead(cmd.OutOrStdout(), head, jsonOut)
+			}
+
 			report, err := verify.Verify(verify.Options{
 				RepoPath:               repoPath,
 				From:                   from,
@@ -106,6 +139,25 @@ the verifier.`,
 	f.StringVar(&component, "component", "", "workspace component to headline; empty = single/root component")
 	f.StringVar(&verifyTime, "verify-time", "", "verification instant (RFC3339); empty = now at the CLI boundary")
 	f.StringVar(&bootstrapDescriptor, "bootstrap-descriptor", "", "out-of-band v0.10 bootstrap descriptor (§5.2/§5.4, ADR-027/028); when supplied, the release interval is the authenticated exact interval (inception root..TO, or adoption including the boundary) rather than FROM..TO. Must be supplied from outside the repository")
+	f.BoolVar(&chainHead, "chain-head", false, "instead of verifying an interval, fresh-verify the v0.10 chain and report the accepted chain head's tag and recorded effective trust (§7.5/ADR-029); requires --bootstrap-descriptor")
 	f.BoolVar(&jsonOut, "json", false, "emit a structured JSON report instead of the human table")
 	return cmd
+}
+
+// writeChainHead renders the accepted chain head (--chain-head): the verified head's
+// tag, target commit, recorded effective trust, and resulting-state digest.
+func writeChainHead(w io.Writer, head *chain.Predecessor, jsonOut bool) error {
+	if jsonOut {
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(map[string]string{
+			"tag":                    head.Tag(),
+			"to_commit":              head.To(),
+			"effective":              head.Effective(),
+			"resulting_state_digest": head.ResultingStateDigest(),
+		})
+	}
+	_, err := fmt.Fprintf(w, "accepted chain head: %s -> %s (effective %s, §7.5/ADR-029)\n",
+		head.Tag(), head.To(), head.Effective())
+	return err
 }

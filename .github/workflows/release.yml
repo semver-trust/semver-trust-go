@@ -85,16 +85,16 @@ jobs:
             exit 1
           fi
           # The predicate type selects the verify path (default v0.1 vs the v0.10
-          # recurring chain, v0.2). timestamp is the recorded instant (ADR-018).
-          # effective backstops the badge for a v0.2 tag, whose at-the-head verify is
-          # promotion_required and so emits no report (see the verify step).
+          # recurring chain, v0.2), and timestamp is the recorded instant (ADR-018) the
+          # re-verification runs at. The badge trust is NOT taken from here — for v0.2 it
+          # comes from the verified chain head (verify --chain-head); for v0.1 from the
+          # fresh verify report.
           #
           # SECURITY: these blobs are NOT yet signature/schema-verified, so every field
           # is untrusted. Never eval or shell-interpolate them — parse as data and write
           # the step outputs via GITHUB_OUTPUT's random-delimiter format, which a hostile
           # value cannot break out of to inject extra outputs. The values are re-checked
-          # downstream (predicate by the case, timestamp by verify's RFC3339 parse,
-          # effective by the T0-T3 guard before it reaches the badge).
+          # downstream (predicate by the case, timestamp by verify's RFC3339 parse).
           python3 -c '
           import base64, glob, json, os, secrets, sys
           att_dir, tag = sys.argv[1], sys.argv[2]
@@ -115,7 +115,6 @@ jobs:
           out = {
               "predicate": str(p["predicateType"]),
               "timestamp": str(pred["timestamp"]),
-              "effective": str((pred.get("trust") or {}).get("effective", "")),
           }
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               for k, v in out.items():
@@ -131,7 +130,6 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
           TS: ${{ steps.ts.outputs.timestamp }}
           PREDICATE: ${{ steps.ts.outputs.predicate }}
-          ATT_EFFECTIVE: ${{ steps.ts.outputs.effective }}
           DESCRIPTOR: ${{ vars.BOOTSTRAP_DESCRIPTOR }}
         run: |
           set -euo pipefail
@@ -175,31 +173,31 @@ jobs:
             done < <(jq -r '.trust_material | to_entries[] | "\(.key)\t\(.value)"' "${desc}")
             [ "${fail}" -eq 0 ] || exit 1
             echo "Bootstrap descriptor binds ${TAG}'s tree."
-            # (b) The complete chain must verify. Verifying at the head's own tag is
-            # promotion_required BY DESIGN (empty interval) — but the chain reader
-            # validates the whole chain genesis→head FIRST, so that specific abort means
-            # "chain valid, this is the head." Any other failure is a real break.
-            set +e
-            out=$(./semver-trust verify --repo . --to "${TAG}" \
-              --bootstrap-descriptor "${desc}" --verify-time "${TS}" 2>&1)
-            rc=$?
-            set -e
-            printf '%s\n' "${out}"
-            if [ "${rc}" -ne 0 ] && ! printf '%s' "${out}" | grep -q 'promotion_required'; then
-              echo "::error::release/v0.2 chain verification failed (not the expected promotion_required-at-head)."
+            # (b) Fresh-verify the whole chain and read the accepted head from the
+            # VERIFIED object (not a store blob): --chain-head validates every chain
+            # member's signature + hash-link and reports the unique head's tag and its
+            # recorded effective trust. The head MUST be this tag (else we would be
+            # publishing a non-head release), and the badge trust is the head's verified
+            # effective. This is the badge value coming from the same object the gate
+            # accepted.
+            head=$(./semver-trust verify --repo . --to "${TAG}" \
+              --bootstrap-descriptor "${desc}" --verify-time "${TS}" --chain-head --json)
+            printf '%s\n' "${head}"
+            head_tag=$(printf '%s' "${head}" | jq -r '.tag')
+            if [ "${head_tag}" != "${TAG}" ]; then
+              echo "::error::the accepted chain head is '${head_tag}', not the pushed tag '${TAG}' — refusing to publish a non-head release/v0.2."
               exit 1
             fi
-            # No interval report is emitted at the head; the badge trust is the
-            # attestation's own recorded effective level.
-            effective="${ATT_EFFECTIVE}"
+            effective=$(printf '%s' "${head}" | jq -r '.effective')
             ;;
           *)
             echo "::error::unknown release predicate '${PREDICATE}'."
             exit 1
             ;;
           esac
-          # Guard the effective level before it flows to the badge — for a v0.2 tag it
-          # came from the (untrusted) attestation, so constrain it to a real level.
+          # Defensive: the badge level comes from a verified source (the fresh v0.1
+          # report, or the v0.2 chain head), but constrain it to a real level anyway
+          # before it flows to the badge.
           case "${effective}" in
             T0|T1|T2|T3) ;;
             *) echo "::error::effective trust '${effective}' is not a valid level (T0-T3)."; exit 1 ;;

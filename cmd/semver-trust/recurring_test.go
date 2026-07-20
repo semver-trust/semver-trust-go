@@ -109,6 +109,42 @@ func setupRecurringChain(t *testing.T) (repo, descPath, foundingCommit, genesisC
 	return repo, descPath, foundingCommit, genesisCommit, newCommit
 }
 
+// TestVerifyChainHead proves `verify --chain-head` fresh-verifies the v0.10 chain
+// and reports the accepted head's tag + recorded effective trust — the verified
+// object a release badge reads, rather than an unverified store blob. Here the head
+// is the genesis v0.1.0 (clean, T2).
+func TestVerifyChainHead(t *testing.T) {
+	repo, descPath, _, genesisCommit, _ := setupRecurringChain(t)
+
+	out, err := runCommand(t, "verify", "--repo", repo, "--to", "main",
+		"--bootstrap-descriptor", descPath, "--verify-time", releaseEpoch,
+		"--chain-head", "--json")
+	if err != nil {
+		t.Fatalf("verify --chain-head: %v\n%s", err, out)
+	}
+	var head map[string]string
+	if err := json.Unmarshal([]byte(out), &head); err != nil {
+		t.Fatalf("chain-head JSON does not parse: %v\n%s", err, out)
+	}
+	if head["tag"] != "v0.1.0" {
+		t.Errorf("chain head tag = %q, want v0.1.0 (the accepted head)", head["tag"])
+	}
+	if head["to_commit"] != genesisCommit {
+		t.Errorf("chain head to_commit = %q, want the genesis commit %s", head["to_commit"], genesisCommit)
+	}
+	if head["effective"] != "T2" {
+		t.Errorf("chain head effective = %q, want T2 (the head's recorded trust)", head["effective"])
+	}
+	if head["resulting_state_digest"] == "" {
+		t.Error("chain head resulting_state_digest is empty")
+	}
+
+	// --chain-head without a descriptor is refused (it is the v0.10 authority).
+	if _, e := runCommand(t, "verify", "--repo", repo, "--to", "main", "--chain-head"); e == nil {
+		t.Error("verify --chain-head without --bootstrap-descriptor should be refused")
+	}
+}
+
 // TestVerifyRecurringAdvance is the C2a payoff: after a genesis release/v0.2 and a
 // later commit, verify DISCOVERS the accepted chain head and switches to the
 // recurring path — the interval is P..TO (only the post-genesis commit, not the
