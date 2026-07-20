@@ -95,44 +95,90 @@ func AcceptedChainHead(repoPath, repository, component string, v *attest.Verifie
 
 	// tag_prefix is a chain invariant; take it from the head.
 	tagPrefix := head.doc.Predicate.Component.TagPrefix
-	headState, err := verifyCompleteChain(head, releases, component, tagPrefix)
+	states, err := verifyCompleteChain(head, releases, component, tagPrefix)
 	if err != nil {
 		return nil, err
 	}
+	return buildPredecessor(repoPath, repository, component, tagPrefix, head, states[head.resultDigest])
+}
 
-	// The accepted predecessor's tag MUST still resolve to P, and to the exact
-	// signed binding (§5.2/ADR-027, §7.5/ADR-029): a missing, moved, or recreated
-	// tag breaks continuity — and, per PR #107's no-orphan-tag discipline, an
-	// attestation whose tag is gone must not become the head the next recurring
-	// release chains to. Assert the live ref matches version_state.emission.tag on
-	// both the peeled commit OID and the raw ref OID.
-	em := head.doc.Predicate.VersionState.Emission.Tag
+// buildPredecessor projects a verified chain member r (with its reconstructed
+// carried state) into a *Predecessor, confirming its emitted tag still resolves to
+// the signed binding (§5.2/ADR-027, §7.5/ADR-029): a missing, moved, or recreated
+// tag breaks continuity — and, per PR #107's no-orphan discipline, an attestation
+// whose tag is gone must not become an authority.
+func buildPredecessor(repoPath, repository, component, tagPrefix string, r verifiedRelease, state version.VersionState) (*Predecessor, error) {
+	em := r.doc.Predicate.VersionState.Emission.Tag
 	if em == nil {
-		return nil, fmt.Errorf("accepted-predecessor: head %q binds no emission.tag", head.tag)
+		return nil, fmt.Errorf("accepted-predecessor: %q binds no emission.tag", r.tag)
 	}
 	tagRefs, err := vcs.TagRefs(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("accepted-predecessor: resolving tags: %w", err)
 	}
-	ref, ok := tagRefs[head.tag]
+	ref, ok := tagRefs[r.tag]
 	if !ok {
-		return nil, fmt.Errorf("accepted-predecessor: head tag %q is absent from the repository — the accepted predecessor's tag must still resolve to P (§5.2/ADR-027)", head.tag)
+		return nil, fmt.Errorf("accepted-predecessor: tag %q is absent from the repository — it must still resolve to its commit (§5.2/ADR-027)", r.tag)
 	}
 	if ref.CommitOID != em.PeeledCommitOID {
-		return nil, fmt.Errorf("accepted-predecessor: head tag %q peels to %s, not the signed emission.tag.peeled_commit_oid %s — the ref has moved (§5.2/ADR-027)", head.tag, ref.CommitOID, em.PeeledCommitOID)
+		return nil, fmt.Errorf("accepted-predecessor: tag %q peels to %s, not the signed emission.tag.peeled_commit_oid %s — the ref has moved (§5.2/ADR-027)", r.tag, ref.CommitOID, em.PeeledCommitOID)
 	}
 	if ref.RefOID != em.RawRefOID {
-		return nil, fmt.Errorf("accepted-predecessor: head tag %q raw ref %s does not match the signed emission.tag.raw_ref_oid %s — the tag was recreated (§7.5/ADR-029)", head.tag, ref.RefOID, em.RawRefOID)
+		return nil, fmt.Errorf("accepted-predecessor: tag %q raw ref %s does not match the signed emission.tag.raw_ref_oid %s — the tag was recreated (§7.5/ADR-029)", r.tag, ref.RefOID, em.RawRefOID)
 	}
-
 	return &Predecessor{
 		repository: repository,
 		component:  component,
 		tagPrefix:  tagPrefix,
-		head:       head,
-		state:      headState,
+		head:       r,
+		state:      state,
 		tagTarget:  ref.CommitOID,
 	}, nil
+}
+
+// SupersedeHead resolves the accepted chain head — the release a promotion
+// supersedes — and its OWN predecessor, the interval/policy anchor for re-verifying
+// the superseded's source range (nil when the superseded is a genesis release; then
+// the descriptor's genesis interval is re-run). Returns (nil, nil, nil) when the
+// component has no chain head. The head and anchor are established by the same fresh
+// verification + complete-chain walk as AcceptedChainHead.
+func SupersedeHead(repoPath, repository, component string, v *attest.Verifier, at time.Time) (superseded, anchor *Predecessor, err error) {
+	envelopes, err := (attest.GitRefStore{Path: repoPath}).All()
+	if err != nil {
+		return nil, nil, fmt.Errorf("accepted-predecessor: enumerating attestations: %w", err)
+	}
+	releases, err := verifiedReleasesFor(repository, component, envelopes, v, at)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(releases) == 0 {
+		return nil, nil, nil
+	}
+	head, err := selectUniqueHead(releases)
+	if err != nil {
+		return nil, nil, err
+	}
+	tagPrefix := head.doc.Predicate.Component.TagPrefix
+	states, err := verifyCompleteChain(head, releases, component, tagPrefix)
+	if err != nil {
+		return nil, nil, err
+	}
+	superseded, err = buildPredecessor(repoPath, repository, component, tagPrefix, head, states[head.resultDigest])
+	if err != nil {
+		return nil, nil, err
+	}
+	if !head.doc.Predicate.VersionState.Genesis {
+		byResult := make(map[string]verifiedRelease, len(releases))
+		for _, r := range releases {
+			byResult[r.resultDigest] = r
+		}
+		prev := byResult[head.priorDigest]
+		anchor, err = buildPredecessor(repoPath, repository, component, tagPrefix, prev, states[prev.resultDigest])
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return superseded, anchor, nil
 }
 
 // verifiedReleasesFor fresh-verifies every envelope and returns the release/v0.2
@@ -238,7 +284,7 @@ func selectUniqueHead(releases []verifiedRelease) (verifiedRelease, error) {
 // canonical baseline is the last advance's, which differs from the chain
 // predecessor it links to), so the baseline cannot be read from one release's wire
 // alone.
-func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, component, tagPrefix string) (version.VersionState, error) {
+func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, component, tagPrefix string) (map[string]version.VersionState, error) {
 	byResult := make(map[string]verifiedRelease, len(releases))
 	for _, r := range releases {
 		byResult[r.resultDigest] = r
@@ -250,34 +296,34 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 	visited := map[string]bool{}
 	for {
 		if visited[cur.resultDigest] {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: chain cycle at %s", cur.tag)
+			return nil, fmt.Errorf("accepted-predecessor: chain cycle at %s", cur.tag)
 		}
 		visited[cur.resultDigest] = true
 		chainOrder = append(chainOrder, cur)
 
 		if cur.doc.Predicate.VersionState.Genesis {
 			if cur.priorDigest != "" {
-				return version.VersionState{}, fmt.Errorf("accepted-predecessor: genesis release %s binds a prior_state — a genesis state has no predecessor (§7.5/ADR-029)", cur.tag)
+				return nil, fmt.Errorf("accepted-predecessor: genesis release %s binds a prior_state — a genesis state has no predecessor (§7.5/ADR-029)", cur.tag)
 			}
 			break
 		}
 		if cur.priorDigest == "" {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: non-genesis release %s binds no prior_state — the chain link is missing", cur.tag)
+			return nil, fmt.Errorf("accepted-predecessor: non-genesis release %s binds no prior_state — the chain link is missing", cur.tag)
 		}
 		prev, ok := byResult[cur.priorDigest]
 		if !ok {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: %s names a predecessor state not present in the store — the chain is broken (§7.5/ADR-027)", cur.tag)
+			return nil, fmt.Errorf("accepted-predecessor: %s names a predecessor state not present in the store — the chain is broken (§7.5/ADR-027)", cur.tag)
 		}
 		prevEm := prev.doc.Predicate.VersionState.Emission.Tag
 		if prevEm == nil {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: linked release %s binds no emission.tag", prev.tag)
+			return nil, fmt.Errorf("accepted-predecessor: linked release %s binds no emission.tag", prev.tag)
 		}
 		pred := cur.doc.Predicate.VersionState.Predecessor
 		if pred == nil {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: non-genesis release %s binds a null version_state.predecessor", cur.tag)
+			return nil, fmt.Errorf("accepted-predecessor: non-genesis release %s binds a null version_state.predecessor", cur.tag)
 		}
 		if pred.Name != prevEm.Name || pred.PeeledCommitOID != prevEm.PeeledCommitOID || pred.RawRefOID != prevEm.RawRefOID {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: %s predecessor tag identity {%s, raw %s, peeled %s} does not match the linked release's emitted tag {%s, raw %s, peeled %s}",
+			return nil, fmt.Errorf("accepted-predecessor: %s predecessor tag identity {%s, raw %s, peeled %s} does not match the linked release's emitted tag {%s, raw %s, peeled %s}",
 				cur.tag, pred.Name, pred.RawRefOID, pred.PeeledCommitOID, prevEm.Name, prevEm.RawRefOID, prevEm.PeeledCommitOID)
 		}
 		// A supersede re-evaluates the SAME commit: its subject must be the superseded
@@ -286,17 +332,17 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 		// outcomes (kind "none") do not advance the head.
 		if cur.doc.Predicate.VersionState.Action == "supersede" {
 			if cur.doc.Predicate.VersionState.Emission.Kind != "tag" {
-				return version.VersionState{}, fmt.Errorf("accepted-predecessor: supersede release %s emits no tag (kind %q) — an attestation-only supersede is not a chain head", cur.tag, cur.doc.Predicate.VersionState.Emission.Kind)
+				return nil, fmt.Errorf("accepted-predecessor: supersede release %s emits no tag (kind %q) — an attestation-only supersede is not a chain head", cur.tag, cur.doc.Predicate.VersionState.Emission.Kind)
 			}
 			if cur.to != prev.to {
-				return version.VersionState{}, fmt.Errorf("accepted-predecessor: supersede release %s is at %s, not the superseded release %s's commit %s — a supersede re-evaluates the same commit", cur.tag, cur.to, prev.tag, prev.to)
+				return nil, fmt.Errorf("accepted-predecessor: supersede release %s is at %s, not the superseded release %s's commit %s — a supersede re-evaluates the same commit", cur.tag, cur.to, prev.tag, prev.to)
 			}
 			// It MUST also bind decision.supersedes to the predecessor attestation it
 			// supersedes — the same stable ref (and digest, if present) the promotion
 			// path emits (§7.3). prior_state links the STATE; supersedes links the
 			// ATTESTATION, and a promotion is only complete when it names both.
 			if err := checkSupersedes(cur, prev); err != nil {
-				return version.VersionState{}, err
+				return nil, err
 			}
 		}
 		cur = prev
@@ -305,7 +351,7 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 	// Walk genesis→head, carrying the baseline forward from the last advance.
 	var carriedBaseline *version.Binding
 	carriedBaselineCore := "0.0.0"
-	var headState version.VersionState
+	states := make(map[string]version.VersionState, len(chainOrder))
 	for i := len(chainOrder) - 1; i >= 0; i-- {
 		r := chainOrder[i]
 		vs := r.doc.Predicate.VersionState
@@ -320,9 +366,9 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 		// claim a non-advance action.
 		switch {
 		case vs.Genesis && vs.Action != "advance":
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: genesis release %s has action %q, want advance (§7.5/ADR-029)", r.tag, vs.Action)
+			return nil, fmt.Errorf("accepted-predecessor: genesis release %s has action %q, want advance (§7.5/ADR-029)", r.tag, vs.Action)
 		case !vs.Genesis && vs.Action != "advance" && vs.Action != "recut" && vs.Action != "supersede":
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: release %s has unsupported chain action %q (want advance, recut, or a promotion supersede)", r.tag, vs.Action)
+			return nil, fmt.Errorf("accepted-predecessor: release %s has unsupported chain action %q (want advance, recut, or a promotion supersede)", r.tag, vs.Action)
 		}
 		var baseline *version.Binding
 		var baselineCore string
@@ -333,7 +379,7 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 			// advance / genesis: the baseline is this release's version predecessor.
 			b, core, err := baselineFromPredecessor(vs)
 			if err != nil {
-				return version.VersionState{}, fmt.Errorf("accepted-predecessor: %s: %w", r.tag, err)
+				return nil, fmt.Errorf("accepted-predecessor: %s: %w", r.tag, err)
 			}
 			baseline, baselineCore = b, core
 			carriedBaseline, carriedBaselineCore = b, core
@@ -341,7 +387,7 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 
 		state, err := reconstructState(r.doc, baseline, baselineCore)
 		if err != nil {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: reconstructing state for %s: %w", r.tag, err)
+			return nil, fmt.Errorf("accepted-predecessor: reconstructing state for %s: %w", r.tag, err)
 		}
 		var priorPtr *string
 		if r.priorDigest != "" {
@@ -350,16 +396,14 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 		}
 		got, err := version.StateDigest(version.CanonicalStateMap(component, tagPrefix, state, priorPtr))
 		if err != nil {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: canonicalizing state for %s: %w", r.tag, err)
+			return nil, fmt.Errorf("accepted-predecessor: canonicalizing state for %s: %w", r.tag, err)
 		}
 		if got != r.resultDigest {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: state digest for %s does not reproduce its signed resulting_state.digest (chain tampered, §8.1/ADR-036)", r.tag)
+			return nil, fmt.Errorf("accepted-predecessor: state digest for %s does not reproduce its signed resulting_state.digest (chain tampered, §8.1/ADR-036)", r.tag)
 		}
-		if r.resultDigest == head.resultDigest {
-			headState = state
-		}
+		states[r.resultDigest] = state
 	}
-	return headState, nil
+	return states, nil
 }
 
 // checkSupersedes verifies a supersede release's decision.supersedes identifies the

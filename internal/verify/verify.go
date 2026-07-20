@@ -64,6 +64,16 @@ type Options struct {
 	// line. It is loaded and authenticated at the CLI boundary. Nil = the v0.3
 	// FROM / policy-boundary path, unchanged.
 	Bootstrap *chain.BootstrapDescriptor
+
+	// Supersede re-evaluates an already-accepted release at its own commit (a §7.3
+	// promotion): it skips accepted-predecessor DISCOVERY (which would anchor the
+	// interval at the commit being superseded and abort promotion_required) and
+	// re-runs the SUPERSEDED release's own source interval, so new evidence (a
+	// landed review) is picked up. Predecessor is the caller-supplied interval/policy
+	// anchor — the superseded release's OWN predecessor (nil for a genesis-superseded,
+	// re-running the descriptor's genesis interval). Set only by promote.
+	Supersede   bool
+	Predecessor *chain.Predecessor
 }
 
 // The §10 step labels an AbortError names. The abort reason the CLI prints to
@@ -177,7 +187,13 @@ func verifyWith(opts Options, pol *policy.Policy) (*Report, error) {
 	// Absent a head — or with no attestation verifier to authenticate one — the run
 	// stays genesis, exactly as M1–M3. The head is established by fresh
 	// verification and unique-head cardinality, never a payload claim.
-	if opts.Bootstrap != nil && attVerifier != nil {
+	switch {
+	case opts.Supersede:
+		// Supersede re-evaluation: the caller supplies the interval/policy anchor (the
+		// superseded release's own predecessor, or nil for a genesis-superseded).
+		// Discovery is skipped so the interval re-runs the superseded's source range.
+		report.Predecessor = opts.Predecessor
+	case opts.Bootstrap != nil && attVerifier != nil:
 		pred, perr := chain.AcceptedChainHead(repo, opts.Bootstrap.Repository, opts.Bootstrap.Component, attVerifier, at)
 		if perr != nil {
 			return nil, abort(stepLoadPolicy, perr)
