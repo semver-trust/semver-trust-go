@@ -46,11 +46,16 @@ v1.4.0-t1.1   <   v1.4.0
 ```
 
 A release that could not muster the evidence for a clean version goes out as
-`v1.4.0-t1.1` instead. In Go modules, npm, and Cargo alike, default resolution
-will not select it. **Low-trust releases become opt-in by construction, with
-zero consumer-side tooling.** A team that never installs SemVer-Trust still
-never auto-adopts an under-evidenced release from a dependency that uses it —
-the ordering does the work. Adoption is entirely on the producer's side.
+`v1.4.0-t1.1` instead. In Go modules, npm, and Cargo, default resolution treats
+it the way it treats any pre-release — hiding or deferring it rather than serving
+it as an ordinary install — so a team that never installs SemVer-Trust still does
+not auto-adopt an under-evidenced release. This rides each ecosystem's *existing*
+pre-release behaviour, which is not uniform (spec repository ADR-034): npm needs
+its `latest` dist-tag kept off trust pre-releases, PyPI's projection is deferred
+by design, and routing friction is never itself attestation verification. It is
+opt-in wherever the ecosystem's own rules cooperate — the producer does the work,
+and the [publishing-profile coverage](conformance-coverage.md) enumerates the
+per-ecosystem specifics.
 
 ## Trust levels order accountability, not risk
 

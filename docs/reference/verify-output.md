@@ -71,6 +71,21 @@ configured providers cannot compute is reported as missing, never fabricated
 When run through `release`, two more steps follow: the §6.4 decision (channel
 and version) and the emitted tag + attestation.
 
+### Clean-channel eligibility
+
+After effective trust, `verify` prints one informational line comparing it to
+the policy threshold. The threshold is a **release-decision** gate (spec
+repository ADR-032), so `verify` *reports* eligibility without itself gating:
+
+```text
+  clean channel: threshold met (effective T2 >= threshold T2; §6.4 blast/differ still applies at release)
+```
+
+Below the threshold it reads `clean channel: below threshold (effective T1 <
+threshold T2) - unavailable regardless of blast/differ (§6.2/ADR-032)`. "Met"
+means only that the accountability gate is cleared — not that the release will
+be clean; the §6.4 blast/differ table is a separate release-time factor.
+
 ## Abort vs T0 — the distinction that matters
 
 **T0 is a verified statement**: every signature checked out, and the evidence
@@ -127,6 +142,15 @@ policy digest, per-commit provenance vector, per-scope floors with sources,
 evidence, and (via `release`) the decision block. CI integrations read
 `.propagation.components[].effective` for badge and gate logic; the committed
 report shape is versioned with the tool.
+
+When a **bootstrap descriptor** is supplied — the opt-in v0.10 path
+(`--bootstrap-descriptor`, [the policy file](policy.md)) — the `--json` report
+additionally carries the authenticated **policy state** (active and candidate
+policy plus trust roots, and the transition authority) and **version state** (the
+authenticated version predecessor and the resulting-state digest) — the facts the
+`release/v0.2` predicate binds (spec repository ADR-028/029; the version-state
+canonicalization profile, ADR-036, is finalizing). These are JSON-only; the human
+table stops at step 7.
 
 ## See also
 

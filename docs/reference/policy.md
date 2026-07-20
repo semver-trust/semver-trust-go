@@ -25,26 +25,38 @@ semver-trust policy explain --repo .     # the decision table in effect
 version   = "0.1"        # policy schema version (required)
 threshold = "T2"         # minimum trust level for the clean channel
 strategy  = "demote"     # what happens below threshold: demote | inflate
-adoption_boundary = "v0.9.4"   # optional — legacy adoption only (ADR-026)
+adoption_boundary = "v0.9.4"   # optional — legacy adoption only (ADR-026/028)
 ```
 
-- **`threshold`** — the trust level a release must reach to ship on the clean
-  channel (`v1.4.0`). Below it, the strategy decides what the release looks
-  like: `demote` keeps the semantically correct bump but confines the release
-  to the trust pre-release channel (`v1.4.0-t1.1`), where default resolvers
-  skip it; `inflate` escalates the bump itself (PATCH→MINOR or →MAJOR) so
-  default ranges do not auto-adopt (spec §6.3).
+- **`threshold`** — the **hard clean-channel accountability gate** (spec
+  repository ADR-032): a release whose effective trust is below it MUST NOT enter
+  the clean channel, and that check is applied *before* the §6.4 blast/differ
+  table, as part of the release decision (and bound into the release attestation
+  for deterministic replay). Below the threshold, `strategy` decides the shape:
+  `demote` keeps the semantically correct bump but confines the release to the
+  trust pre-release channel (`v1.4.0-t1.1`); `inflate` escalates the bump itself
+  (PATCH→MINOR or →MAJOR) so default ranges do not auto-adopt (spec §6.3). The
+  portable baseline is **T2** (T1 is not in the clean profile before empirical
+  agent-review evidence). `verify` *reports* threshold eligibility — a
+  clean-channel line in its output — but does not itself gate; the gate lives in
+  the release decision, not in verification.
 - **`adoption_boundary`** — a commit (SHA or tag) before which history is
   exempt from verification. **Greenfield repositories never need this**; it
   exists for legacy adoption where early history is genuinely unverifiable
   (see
   [adopting on an existing repository](../guides/adopt-legacy-github.md)). Three
-  properties bind it (spec repository ADR-026): it is *policy-pinned* — there
-  is deliberately no CLI flag, because whoever runs the verifier must not be
-  able to move the boundary; it is *disclosed* — every report and release
-  attestation marks a boundary-anchored range; and it is *exempt, never
-  laundered* — pre-boundary history makes no claim at all (it is out of scope,
-  not T0).
+  properties bind it (spec repository ADR-026): it is *policy-pinned* — moving it
+  is a meta-path commit at the required level; it is *disclosed* — every report
+  and release attestation marks a boundary-anchored range; and it is *exempt,
+  never laundered* — pre-boundary history makes no claim at all (out of scope,
+  not T0). Under the opt-in **v0.10 path** (spec repository ADR-028) the
+  boundary's *authority* is an out-of-band **bootstrap descriptor** supplied with
+  `--bootstrap-descriptor` — an authenticated document the verifier holds from
+  *outside* the repository (the loader rejects any in-repo path). The flag
+  *supplies* that external authority; it does not let a verifier *move* the
+  boundary — the in-policy value must match the descriptor, and neither the repo
+  nor the caller can move it unilaterally. Absent a descriptor, the policy-pinned
+  value governs exactly as above.
 
 ### Choosing threshold and strategy
 

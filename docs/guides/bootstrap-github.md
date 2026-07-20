@@ -324,7 +324,10 @@ human, cryptographically, reproducibly. Use the `--verify-time` recorded in
 the release attestation (`predicate.timestamp`) so the reproduction holds
 forever, key expiries notwithstanding.
 
-That's the full loop. From here, each release repeats §7–§9 with
-`--from <previous-tag>`; this repository's own
+That's the full loop. From here, each release repeats §7–§9 — with
+`--from <previous-tag>` on the default v0.3 path, or, on the opt-in v0.10 path,
+with a `--bootstrap-descriptor` and no `--from` at all: the accepted chain head is
+auto-detected, so the version predecessor is *authenticated* rather than typed
+(spec ADR-027/029). This repository's own
 [release runbook](../release-runbook.md) is the living example of the
 repeatable cadence.
