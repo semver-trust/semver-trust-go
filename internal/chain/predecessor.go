@@ -280,6 +280,11 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 			return version.VersionState{}, fmt.Errorf("accepted-predecessor: %s predecessor tag identity {%s, raw %s, peeled %s} does not match the linked release's emitted tag {%s, raw %s, peeled %s}",
 				cur.tag, pred.Name, pred.RawRefOID, pred.PeeledCommitOID, prevEm.Name, prevEm.RawRefOID, prevEm.PeeledCommitOID)
 		}
+		// A supersede re-evaluates the SAME commit: its subject must be the superseded
+		// release's TO (§7.5/ADR-029). An advance/recut moves to a new TO.
+		if cur.doc.Predicate.VersionState.Action == "supersede" && cur.to != prev.to {
+			return version.VersionState{}, fmt.Errorf("accepted-predecessor: supersede release %s is at %s, not the superseded release %s's commit %s — a supersede re-evaluates the same commit", cur.tag, cur.to, prev.tag, prev.to)
+		}
 		cur = prev
 	}
 
@@ -290,22 +295,27 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 	for i := len(chainOrder) - 1; i >= 0; i-- {
 		r := chainOrder[i]
 		vs := r.doc.Predicate.VersionState
-		// A chain member must carry a supported action for its position: genesis is
-		// always an advance; a recurring predecessor-chain release is advance or
-		// recut. supersede is an attestation-only re-evaluation, not a chain head —
-		// reject it here until the superseded-authority reader lands (#76 M6-C5), so
-		// a self-consistent supersede release cannot be reconstructed as an
-		// advance-like head, and a genesis cannot claim recut.
+		// A chain member must carry a supported action for its position. Genesis is
+		// always an advance. A recurring member is advance, recut, or a PROMOTION
+		// supersede — the promotion of an unpromoted target to its clean tag, the one
+		// supersede outcome that emits a tag and so becomes a chain head. The
+		// attestation-only supersede outcomes (late supersession, demotion, under-bump
+		// invalidation) emit no tag (emission.kind "none") and do not advance the head;
+		// they are rejected as chain heads here (deferred), so a self-consistent
+		// tagless supersede cannot be reconstructed as a head and a genesis cannot
+		// claim a non-advance action.
 		switch {
 		case vs.Genesis && vs.Action != "advance":
 			return version.VersionState{}, fmt.Errorf("accepted-predecessor: genesis release %s has action %q, want advance (§7.5/ADR-029)", r.tag, vs.Action)
-		case !vs.Genesis && vs.Action != "advance" && vs.Action != "recut":
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: release %s has unsupported chain action %q (only advance and recut are chain heads; supersede is attestation-only, #76 M6-C5)", r.tag, vs.Action)
+		case !vs.Genesis && vs.Action != "advance" && vs.Action != "recut" && vs.Action != "supersede":
+			return version.VersionState{}, fmt.Errorf("accepted-predecessor: release %s has unsupported chain action %q (want advance, recut, or a promotion supersede)", r.tag, vs.Action)
+		case vs.Action == "supersede" && vs.Emission.Kind != "tag":
+			return version.VersionState{}, fmt.Errorf("accepted-predecessor: supersede release %s emits no tag (kind %q) — an attestation-only supersede is not a chain head", r.tag, vs.Emission.Kind)
 		}
 		var baseline *version.Binding
 		var baselineCore string
-		if vs.Action == "recut" {
-			// recut preserves the target and therefore its baseline.
+		if vs.Action == "recut" || vs.Action == "supersede" {
+			// recut and supersede PRESERVE the target and therefore its baseline.
 			baseline, baselineCore = carriedBaseline, carriedBaselineCore
 		} else {
 			// advance / genesis: the baseline is this release's version predecessor.
