@@ -281,9 +281,23 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 				cur.tag, pred.Name, pred.RawRefOID, pred.PeeledCommitOID, prevEm.Name, prevEm.RawRefOID, prevEm.PeeledCommitOID)
 		}
 		// A supersede re-evaluates the SAME commit: its subject must be the superseded
-		// release's TO (§7.5/ADR-029). An advance/recut moves to a new TO.
-		if cur.doc.Predicate.VersionState.Action == "supersede" && cur.to != prev.to {
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: supersede release %s is at %s, not the superseded release %s's commit %s — a supersede re-evaluates the same commit", cur.tag, cur.to, prev.tag, prev.to)
+		// release's TO (§7.5/ADR-029). An advance/recut moves to a new TO. Only a
+		// PROMOTION supersede (emits a tag) is a chain head; the attestation-only
+		// outcomes (kind "none") do not advance the head.
+		if cur.doc.Predicate.VersionState.Action == "supersede" {
+			if cur.doc.Predicate.VersionState.Emission.Kind != "tag" {
+				return version.VersionState{}, fmt.Errorf("accepted-predecessor: supersede release %s emits no tag (kind %q) — an attestation-only supersede is not a chain head", cur.tag, cur.doc.Predicate.VersionState.Emission.Kind)
+			}
+			if cur.to != prev.to {
+				return version.VersionState{}, fmt.Errorf("accepted-predecessor: supersede release %s is at %s, not the superseded release %s's commit %s — a supersede re-evaluates the same commit", cur.tag, cur.to, prev.tag, prev.to)
+			}
+			// It MUST also bind decision.supersedes to the predecessor attestation it
+			// supersedes — the same stable ref (and digest, if present) the promotion
+			// path emits (§7.3). prior_state links the STATE; supersedes links the
+			// ATTESTATION, and a promotion is only complete when it names both.
+			if err := checkSupersedes(cur, prev); err != nil {
+				return version.VersionState{}, err
+			}
 		}
 		cur = prev
 	}
@@ -309,8 +323,6 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 			return version.VersionState{}, fmt.Errorf("accepted-predecessor: genesis release %s has action %q, want advance (§7.5/ADR-029)", r.tag, vs.Action)
 		case !vs.Genesis && vs.Action != "advance" && vs.Action != "recut" && vs.Action != "supersede":
 			return version.VersionState{}, fmt.Errorf("accepted-predecessor: release %s has unsupported chain action %q (want advance, recut, or a promotion supersede)", r.tag, vs.Action)
-		case vs.Action == "supersede" && vs.Emission.Kind != "tag":
-			return version.VersionState{}, fmt.Errorf("accepted-predecessor: supersede release %s emits no tag (kind %q) — an attestation-only supersede is not a chain head", r.tag, vs.Emission.Kind)
 		}
 		var baseline *version.Binding
 		var baselineCore string
@@ -348,6 +360,28 @@ func verifyCompleteChain(head verifiedRelease, releases []verifiedRelease, compo
 		}
 	}
 	return headState, nil
+}
+
+// checkSupersedes verifies a supersede release's decision.supersedes identifies the
+// predecessor attestation it supersedes: the same stable store ref
+// attest.EnvelopeRef(prev.to, prev.envelope), and — when the object identity carries
+// a digest — the predecessor envelope's content digest.
+func checkSupersedes(cur, prev verifiedRelease) error {
+	sup := cur.doc.Predicate.Decision.Supersedes
+	if sup == nil {
+		return fmt.Errorf("accepted-predecessor: supersede release %s binds a null decision.supersedes — a promotion must name the attestation it supersedes (§7.3)", cur.tag)
+	}
+	wantRef := attest.EnvelopeRef(prev.to, prev.envelope)
+	if sup.ID != wantRef {
+		return fmt.Errorf("accepted-predecessor: supersede release %s decision.supersedes %q does not identify the superseded attestation %q", cur.tag, sup.ID, wantRef)
+	}
+	if h := sup.Digest["sha256"]; h != "" {
+		sum := sha256.Sum256(prev.envelope)
+		if got := hex.EncodeToString(sum[:]); h != got {
+			return fmt.Errorf("accepted-predecessor: supersede release %s decision.supersedes digest %s does not match the superseded attestation digest %s", cur.tag, h, got)
+		}
+	}
+	return nil
 }
 
 // baselineFromPredecessor derives an advance/genesis baseline binding + core from
@@ -534,6 +568,9 @@ type releaseV02Doc struct {
 			AuthorityIdentity  digestDescriptor   `json:"authority_identity"`
 		} `json:"policy_state"`
 		VersionState versionStateDoc `json:"version_state"`
+		Decision     struct {
+			Supersedes *objectIdentity `json:"supersedes"`
+		} `json:"decision"`
 	} `json:"predicate"`
 }
 
@@ -580,5 +617,6 @@ type tagEmission struct {
 }
 
 type objectIdentity struct {
-	ID string `json:"id"`
+	ID     string            `json:"id"`
+	Digest map[string]string `json:"digest,omitempty"`
 }
