@@ -193,18 +193,29 @@ descriptor whose `version_predecessor` binds the legacy tag (`v0.9.4`, with its
 raw ref and peeled commit OIDs), and the authenticated ancestry continues the line
 to `v0.10.0` **while** the boundary disclosure still rides into the attestation —
 both are independent authenticated facts, no longer a function of `--from`
-spelling. The v0.10 adoption release adds three flags (illustrative — this
-sub-step is not part of the executed walkthrough above; the descriptor is supplied
-from *outside* the repository):
+spelling. The v0.10 adoption release adds the descriptor, the `v0.2` predicate, and
+the `--repository-digest` (the descriptor is supplied from *outside* the repository).
+Run as part of the [recurring dogfood ceremony](../history/2026-07-20-recurring-dogfood.md)
+against a legacy `v0.9.4` line:
 
-```sh
-semver-trust release --repo . --to HEAD \
-  --bootstrap-descriptor ../widget-descriptor.json \
-  --predicate v0.2 --repository-digest sha256:<repo-identity-digest> \
-  --claimed-bump minor --blast low \
-  --tag-key ~/.ssh/semver-trust-attest --attest-key ~/.ssh/semver-trust-attest \
-  --verify-time 2026-07-13T00:00:00Z
+```console
+$ semver-trust release --repo . --to main \
+    --bootstrap-descriptor ../descriptor.json \
+    --predicate v0.2 --repository-digest sha256:<repo-identity-digest> \
+    --claimed-bump minor --blast low --verify-time <VT> \
+    --tag-key ~/.ssh/semver-trust-attest --attest-key ~/.ssh/semver-trust-attest
+  channel:        clean
+  version:        v0.10.0
+  version line:   continues v0.9.4 (authenticated, §7.5/ADR-029)
+tag v0.10.0 -> … (signed annotated, SSHSIG namespace "git")
+release attestation https://semver-trust.dev/release/v0.2
 ```
+
+The emitted `release/v0.2` records `interval.mode = adoption` with the boundary
+disclosed *and* `version_state.predecessor = v0.9.4` continuing the line — the two
+facts the pre-v0.10 path forced you to choose between. Author the descriptor and
+walk the full recurring cadence with the
+[recurring release runbook](../recurring-release-runbook.md).
 
 The v0.3 `--from ''` release above stays valid — it is how the published
 v0.1.x–v0.2.x chain verifies — but it carries the old tradeoff; the descriptor
