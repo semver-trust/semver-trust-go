@@ -35,12 +35,15 @@ plain language.
 - [architecture.md](architecture.md) — package map and invariants of the Go
   implementation.
 - [release-runbook.md](release-runbook.md) — this repository's own release
-  ceremony.
+  ceremony (the default `release/v0.1` path).
+- [recurring-release-runbook.md](recurring-release-runbook.md) — the v0.10 opt-in
+  recurring chain (genesis → advance → recut → promote behind a bootstrap descriptor).
 - [CONTRIBUTING](../CONTRIBUTING.md) — developing semver-trust-go itself.
 - [Branch-protection rulesets](../.github/rulesets/README.md) — the
   two-ruleset model as committed artifacts.
 - [history/](history/) — frozen records of how this repository was built
-  (first-release ceremony, build-phase plan, legacy port audit).
+  (first-release ceremony, recurring dogfood ceremony, build-phase plan, legacy
+  port audit).
 
 ## Normative sources
 

@@ -2,7 +2,10 @@
 # Release runbook
 
 The repeatable cadence for cutting a trust-tagged release of semver-trust-go
-with its own tooling. This is the **living process**; [history/first-release.md](history/first-release.md)
+with its own tooling — the default `release/v0.1` path this repository ships on.
+The opt-in v0.10 authenticated recurring chain (`release/v0.2` behind a bootstrap
+descriptor) has its own [recurring release runbook](recurring-release-runbook.md).
+This is the **living process**; [history/first-release.md](history/first-release.md)
 is the historical record of the very first (`v0.1.0`) ceremony. Steps marked
 **MANUAL** are the maintainer's accountability acts and cannot be delegated —
 signing an attestation asserts *you stand behind the code* (specification
