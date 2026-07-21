@@ -122,6 +122,72 @@ func TestEnrollCrossRegistryRefusal(t *testing.T) {
 	}
 }
 
+// genPubFile writes a fresh SSH public key to a temp path and returns it.
+func genPubFile(t *testing.T) string {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "k.pub")
+	if err := os.WriteFile(p, ssh.MarshalAuthorizedKey(signer.PublicKey()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// The same key targeted at both registries in ONE invocation must be refused
+// (ADR-040): each target's on-disk cross-check cannot see the other's pending
+// mutation, so the distinctness guard has to also cover the pending set.
+func TestEnrollRefusesSameKeyBothRegistries(t *testing.T) {
+	repo, pubPath, _ := enrollRepo(t)
+	allowed := filepath.Join(repo, ".semver-trust", "allowed_signers")
+	att := filepath.Join(repo, ".semver-trust", "attestation_signers")
+
+	// Print-by-default: refused by the pending-set ADR-040 check, before any write.
+	if _, _, err := runRoot(t, "enroll", "--repo", repo, "--commit-key", pubPath, "--attest-key", pubPath); err == nil || !strings.Contains(err.Error(), "distinct") {
+		t.Errorf("same key in both registries (print) = %v, want the ADR-040 refusal", err)
+	}
+	// With --write it is refused too, and nothing is written.
+	if _, _, err := runRoot(t, "enroll", "--repo", repo, "--commit-key", pubPath, "--attest-key", pubPath, "--write"); err == nil {
+		t.Error("same key in both registries with --write should refuse")
+	}
+	for _, p := range []string{allowed, att} {
+		if _, statErr := os.Stat(p); !os.IsNotExist(statErr) {
+			t.Errorf("a refused enrollment must not write %s", p)
+		}
+	}
+}
+
+// Multi-target --write is refused: per-file temp+rename gives no cross-file
+// transaction, so the tool does one registry per --write rather than fake
+// all-or-nothing. Multi-target print (no write) is fine.
+func TestEnrollMultiTargetWriteRefused(t *testing.T) {
+	repo, commitPub, _ := enrollRepo(t)
+	attestPub := genPubFile(t)
+
+	// Two distinct keys PRINT fine — two lines, no write.
+	out, _, err := runRoot(t, "enroll", "--repo", repo, "--commit-key", commitPub, "--attest-key", attestPub)
+	if err != nil {
+		t.Fatalf("multi-target print: %v", err)
+	}
+	if n := len(strings.Split(strings.TrimSpace(out), "\n")); n != 2 {
+		t.Errorf("want two printed lines, got %d:\n%s", n, out)
+	}
+
+	// But multi-target --write is refused deliberately, and writes nothing.
+	if _, _, werr := runRoot(t, "enroll", "--repo", repo, "--commit-key", commitPub, "--attest-key", attestPub, "--write"); werr == nil || !strings.Contains(werr.Error(), "one registry at a time") {
+		t.Errorf("multi-target --write = %v, want the one-at-a-time refusal", werr)
+	}
+	if _, statErr := os.Stat(filepath.Join(repo, ".semver-trust", "allowed_signers")); !os.IsNotExist(statErr) {
+		t.Error("a refused multi-target --write must not write any registry")
+	}
+}
+
 func TestEnrollDryRunAndNoTarget(t *testing.T) {
 	repo, pubPath, _ := enrollRepo(t)
 

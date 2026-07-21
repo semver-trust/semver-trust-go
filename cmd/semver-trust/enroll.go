@@ -67,12 +67,27 @@ creation, a strict re-parse of the whole result, and a temp-file + fsync + renam
 				return err
 			}
 
-			if commitKey == "" && attestKey == "" {
+			targets := 0
+			if commitKey != "" {
+				targets++
+			}
+			if attestKey != "" {
+				targets++
+			}
+			if targets == 0 {
 				return errors.New("enroll: at least one of --commit-key or --attest-key is required")
 			}
 
-			// Build every requested enrollment in memory first; a refusal on any target
-			// writes nothing (all-or-nothing).
+			// --write is atomic per file, but a batch of registries is NOT: a
+			// cross-file transaction cannot be provided by temp+rename, so a second
+			// target's write failure would leave the first registry changed. Rather
+			// than fake all-or-nothing, --write handles exactly one registry — the
+			// human runs a separate --write per key so each atomic write stands alone.
+			if write && !dryRun && targets > 1 {
+				return errors.New("enroll: --write handles one registry at a time (each write is atomic per file; a batch is not) — run a separate `enroll ... --write` per key")
+			}
+
+			// Build every requested enrollment in memory first.
 			var pending []enrollment
 			if commitKey != "" {
 				e, err := buildSSHTarget(repoPath, commitKey, "--commit-key",
@@ -91,6 +106,19 @@ creation, a strict re-parse of the whole result, and a temp-file + fsync + renam
 					return err
 				}
 				pending = append(pending, e)
+			}
+
+			// ADR-040 across the PENDING set: each target's on-disk cross-registry
+			// check cannot see the other target's not-yet-written mutation, so one
+			// invocation could otherwise enroll the same key as both a commit and an
+			// attestation signer. Refuse a fingerprint that appears in more than one
+			// target — commit and attestation keys must be distinct.
+			seen := map[string]string{}
+			for _, e := range pending {
+				if prev, dup := seen[e.result.Fingerprint]; dup {
+					return fmt.Errorf("enroll: the same key is targeted by %s and %s — commit and attestation keys must be distinct (ADR-022/040)", prev, e.flag)
+				}
+				seen[e.result.Fingerprint] = e.flag
 			}
 
 			so := &errWriter{w: cmd.OutOrStdout()}
