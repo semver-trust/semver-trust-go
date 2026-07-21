@@ -53,9 +53,9 @@ reconciled to current `main`; carry them into the code:
 - **No `vendor/` directory.** The proposal's "vendored x/crypto" is the module dependency
   `golang.org/x/crypto v0.54.0`; `ssh.MarshalAuthorizedKey` (`ssh/keys.go`) lives there and
   is currently unused, so the enrollment-line formatter is genuinely net-new.
-- **The `"git"` namespace constant is unexported** — `gitSSHNamespace`,
-  `internal/vcs/verify.go:22`. `enroll` / `doctor` live outside `internal/vcs`, so M1 must
-  export it (or add an exported alias) rather than reuse it directly.
+- **The `"git"` namespace constant was unexported** (`gitSSHNamespace`). M1 exported it as
+  `vcs.GitSSHNamespace` (`internal/vcs/verify.go:24`), since `enroll` / `doctor` live outside
+  `internal/vcs` and need the commit-signing namespace.
 - **The adoption boundary is descriptor-pinned (ADR-027/028), not policy-pinned.** ADR-026
   is superseded. Retarget the proposal's "ADR-026 extension" candidate to ADR-027/028, and
   phrase the `doctor` adoption-boundary check as "the in-policy value mirrors the descriptor
@@ -81,7 +81,7 @@ reconciled to current `main`; carry them into the code:
 | `readTreeFile` / `MetaPolicyFromTree` | `internal/verify/tree.go:35` / `metapolicy.go:38` | doctor policy/registry tree reads |
 | `attest.GitRefStore` `List`/`All`, `EnvelopeRef`, `validSubject` | `internal/attest/store.go:88,138,46,187` | doctor chain/refs; path-fence prior art |
 | `attest.Namespace` (attestation) | `internal/attest/attest.go:39` | enroll/doctor namespace |
-| `gitSSHNamespace = "git"` (unexported) | `internal/vcs/verify.go:22` | export in M1 |
+| `vcs.GitSSHNamespace = "git"` (exported in M1) | `internal/vcs/verify.go:24` | enroll/doctor namespace |
 | resolvers `resolveHumanSigners` / `resolvePGPKeyring` / `buildAttestationVerifier` | `internal/verify/verify.go:773,803,834` | wrapped by the P0 `LoadTrustMaterial` seam |
 | single-commit classify (loop body) | `internal/verify/verify.go:338-388` | carved into `ClassifyCommit` (P0) |
 | `vcs.VerifyCommitSignature` | `internal/vcs/verify.go:100` | doctor simulate/commit |
