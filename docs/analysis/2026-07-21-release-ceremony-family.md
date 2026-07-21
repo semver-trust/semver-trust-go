@@ -42,9 +42,9 @@ analysis found in the setup phase (its §1), reproduced one phase downstream.
 
 The catalog below ranks the release-ceremony steps by severity, and — following the
 bootstrap doc — classifies each by *how* it fails, because the failure classes call for
-different fixes. The two worst are **silent**: nothing local refuses them.
-
-### 1.1 Silent failures (no local abort)
+different fixes. Items 1–2 fail **silently** (nothing local refuses them); items 3–8 are
+**hard §5.4/§5.2 aborts** (loud, but opaque without protocol knowledge); items 9–12 are
+**ordering (CI-red) or operator-reading** traps. The two silent ones are the worst.
 
 1. **The CI-variable trailing-newline trap.** The descriptor's identity is `sha256`
    over its **exact raw bytes** (`internal/chain/bootstrap.go:89-92`,
@@ -64,8 +64,6 @@ different fixes. The two worst are **silent**: nothing local refuses them.
    (`docs/recurring-release-runbook.md`, "Continuing an already-published line"). Both
    are structurally valid descriptors — the wrong one produces a wrong version with no
    abort at all.
-
-### 1.2 Hard aborts (loud, but opaque without protocol knowledge)
 
 3. **`trust_material` — one git-blob digest per *declared* registry, and the runbook
    example under-counts.** The recipe computes each digest from the committed blob at
@@ -98,8 +96,6 @@ different fixes. The two worst are **silent**: nothing local refuses them.
    `component` must match the verified subject (`internal/verify/verify.go:434-444`,
    `bootstrap_subject_mismatch`), and `--repository-digest` must be a stable value reused
    across the chain.
-
-### 1.3 Ordering (CI-red) and operator misreads
 
 9. **Publish ordering.** Attestation refs must be pushed **before** the tag, and the CI
    variable set **before** the tag, because the tag push is the trigger and the verify
@@ -192,7 +188,7 @@ guides PR, so the code phases are justified only by the remainder:
 
 1. **Fix the runbook's `trust_material` example** to show one digest per *declared*
    registry, with an explicit note that the map must equal the policy's declared set
-   exactly — the three-vs-two trap of §1.3.
+   exactly — the three-vs-two trap of §1.
 2. **Promote the round-trip check to a named pre-publish gate.** The no-trailing-newline
    requirement and the `sha256(read-back variable) == Digest()` equivalence check live
    today only in the transition record's Operational note. Move them into the runbook as a
@@ -245,7 +241,7 @@ in front of the human, at the authoring moment — strictly more attention than 
 canonical bytes to a path **outside** the repo under the writer contract (§3.6), then
 re-parses the result through `LoadBootstrapDescriptor` — which refuses in-repo and
 symlink targets by the same guard verification uses. The emitted bytes are canonical and
-newline-free, so §1.1's trap is closed for anyone who uses the tool.
+newline-free, so §1's trap is closed for anyone who uses the tool.
 
 This is the release-phase analog of `enroll`: it formats and validates the one artifact
 the ceremony currently hand-assembles, and leaves the accountability act (the signed
@@ -291,14 +287,14 @@ it is the on-ramp to `release`, never a substitute, and (as the bootstrap doc ar
 Fetch the attestation refs, extract the recorded instant from the tag's attestation, and
 run `verify --chain-head` under that injected clock against an out-of-band descriptor.
 This is the bootstrap doc's deferred P3 `reproduce`, now motivated by the transition's
-final manual step. It mechanizes the verify-time and out-of-band discipline that §1.3 and
+final manual step. It mechanizes the verify-time and out-of-band discipline that §1 and
 the reproduction spot-check demand, and — because it is a verification-semantics statement
 — it is gated, as the bootstrap doc notes, on conformance vectors for injected-clock
 verification.
 
 ## 6. Descriptor identity: raw bytes versus canonical bytes
 
-The CI-variable trap (§1.1) exists because identity is `sha256` over the raw file bytes
+The CI-variable trap (§1) exists because identity is `sha256` over the raw file bytes
 (`internal/chain/bootstrap.go:89-92`), so any lossy channel — a stripped newline, CRLF, a
 re-indentation — changes it. Two dispositions:
 
