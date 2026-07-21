@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/semver-trust/semver-trust-go/internal/pathfence"
 	"github.com/semver-trust/semver-trust-go/internal/policy"
 	"github.com/semver-trust/semver-trust-go/internal/preflight"
 	"github.com/semver-trust/semver-trust-go/internal/sshsig"
@@ -66,13 +66,19 @@ run and restricts the run to a side-effect-free subset.`,
 			}
 
 			// Load the working-tree policy (doctor diagnoses the tree you are about
-			// to commit); a parse error is reported by the policy/parse check.
+			// to commit); a parse error is reported by the policy/parse check. The
+			// path is fenced before any filesystem read: --policy (or a hostile
+			// checkout) could contain ".." or a symlink, and doctor must not read
+			// outside the repository even for a read-only diagnostic (ADR-039).
 			var (
 				pol    *policy.Policy
+				polRaw []byte
 				polErr error
 			)
-			polRaw, readErr := os.ReadFile(filepath.Join(repoPath, policyPath))
-			if readErr == nil {
+			if abs, ferr := pathfence.Resolve(repoPath, policyPath); ferr != nil {
+				polErr = ferr
+			} else if data, readErr := os.ReadFile(abs); readErr == nil {
+				polRaw = data
 				pol, polErr = policy.Parse(polRaw)
 			}
 
@@ -152,7 +158,14 @@ func resolvePersona(personaStr, repo string, pol *policy.Policy) (preflight.Pers
 	if pol == nil || pol.Identity.AttestationSigners == "" {
 		return preflight.Contributor, nil
 	}
-	data, err := os.ReadFile(filepath.Join(repo, pol.Identity.AttestationSigners))
+	// Fence the policy-declared attestation_signers path before reading it: a
+	// hostile repo could point it outside the tree. A refusal (or any read error)
+	// falls back to the contributor default rather than reading outside the repo.
+	abs, ferr := pathfence.Resolve(repo, pol.Identity.AttestationSigners)
+	if ferr != nil {
+		return preflight.Contributor, nil
+	}
+	data, err := os.ReadFile(abs)
 	if err != nil {
 		return preflight.Contributor, nil
 	}

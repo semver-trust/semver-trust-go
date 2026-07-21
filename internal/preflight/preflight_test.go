@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+func TestVerifyInvocationShellSafe(t *testing.T) {
+	if got := verifyInvocation(&Env{Repo: "/tmp/my repo"}); !strings.Contains(got, `--repo '/tmp/my repo'`) {
+		t.Errorf("a repo path with a space must be shell-quoted: %q", got)
+	}
+	if got := verifyInvocation(&Env{Repo: "."}); !strings.Contains(got, "--repo . ") {
+		t.Errorf("a plain path must not be gratuitously quoted: %q", got)
+	}
+	if got := verifyInvocation(&Env{Repo: "a'b"}); !strings.Contains(got, `'a'\''b'`) {
+		t.Errorf("an embedded single quote must be escaped: %q", got)
+	}
+}
+
 func TestSeverityExit(t *testing.T) {
 	mk := func(p Persona, r Result) Check {
 		return Check{ID: "x", Personas: []Persona{p}, Run: func(*Env) Result { return r }}

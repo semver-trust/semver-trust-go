@@ -11,6 +11,7 @@
 package preflight
 
 import (
+	"strings"
 	"time"
 
 	"github.com/semver-trust/semver-trust-go/internal/policy"
@@ -180,5 +181,26 @@ func verifyInvocation(env *Env) string {
 	if repo == "" {
 		repo = "."
 	}
-	return "semver-trust verify --repo " + repo + " --to HEAD"
+	return "semver-trust verify --repo " + shellQuote(repo) + " --to HEAD"
+}
+
+// shellQuote makes s safe to paste into a shell. The verify invocation is
+// printed, never executed, but the "print the exact invocation" contract
+// requires it be copy-pasteable for repo paths with spaces or shell
+// metacharacters.
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	for _, r := range s {
+		if !shellSafeRune(r) {
+			return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+		}
+	}
+	return s
+}
+
+func shellSafeRune(r rune) bool {
+	return r == '-' || r == '_' || r == '.' || r == '/' || r == '@' ||
+		(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
 }

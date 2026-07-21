@@ -96,7 +96,7 @@ func checkHook(env *Env) Result {
 
 func checkPolicyParse(env *Env) Result {
 	if env.PolicyErr != nil {
-		return fail("policy does not parse ("+env.PolicyErr.Error()+") — the config is the root of trust",
+		return fail("policy could not be loaded ("+env.PolicyErr.Error()+") — the config is the root of trust",
 			"§10 step 1 (load policy)", "semver-trust policy validate")
 	}
 	if env.Policy == nil {

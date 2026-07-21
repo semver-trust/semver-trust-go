@@ -55,4 +55,3 @@ semver-trust promote [flags]
 ### SEE ALSO
 
 * [semver-trust](semver-trust.md)	 - Provenance-scoped trust levels for semantic versioning
-

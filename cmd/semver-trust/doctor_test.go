@@ -75,4 +75,14 @@ func TestDoctorCommand(t *testing.T) {
 	if _, _, err := runRoot(t, "doctor", "--repo", repo, "--persona", "bogus"); err == nil {
 		t.Error("unknown --persona should error")
 	}
+
+	// A traversing --policy path is refused by the fence before any read: doctor
+	// must not read outside the repository even for a read-only diagnostic (ADR-039).
+	fout, _, ferr := runRoot(t, "doctor", "--repo", repo, "--policy", "../../../../etc/passwd")
+	if ferr == nil {
+		t.Error("a traversing --policy path should FAIL (fence refusal), not read outside the repo")
+	}
+	if !strings.Contains(fout, "pathfence") {
+		t.Errorf("a traversing --policy path should surface the fence refusal:\n%s", fout)
+	}
 }

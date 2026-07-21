@@ -12,4 +12,3 @@ Emit signed SemVer-Trust attestations
 
 * [semver-trust](semver-trust.md)	 - Provenance-scoped trust levels for semantic versioning
 * [semver-trust attest review](semver-trust_attest_review.md)	 - Emit a signed review attestation over commits (spec §4.3)
-

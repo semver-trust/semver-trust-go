@@ -37,4 +37,3 @@ latest, next, and tag.
 * [semver-trust tag](semver-trust_tag.md)	 - Create an annotated tag at HEAD: the given name or the computed next version
 * [semver-trust verify](semver-trust_verify.md)	 - Verify a release range's provenance and trust (spec §10 steps 1–7)
 * [semver-trust version](semver-trust_version.md)	 - Print the tool version and conformance pin
-
