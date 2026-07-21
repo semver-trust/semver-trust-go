@@ -29,6 +29,15 @@ func resolveCommit(r *git.Repository, rev string) (*object.Commit, error) {
 	return r.CommitObject(*hash)
 }
 
+// ReadTreeFile reads a file from a revision's tree — never the working tree.
+// It is the P0 seam consumed by internal/preflight (doctor): the registry/policy
+// drift checks compare the working-tree file against the tree at HEAD, and every
+// other tree read doctor needs is already behind an exported seam
+// (LoadTrustMaterial, ClassifyCommit, MetaPolicyFromTree, AttestationVerifier).
+func ReadTreeFile(repoPath, rev, path string) ([]byte, error) {
+	return readTreeFile(repoPath, rev, path)
+}
+
 // readTreeFile reads a file from a revision's tree — never the working tree
 // (§10 step 1: the policy is loaded from TO's tree, so a dirty checkout or a
 // working-tree edit cannot change what is verified).
