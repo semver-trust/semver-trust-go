@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/semver-trust/semver-trust-go/internal/gitconfig"
 	"github.com/semver-trust/semver-trust-go/internal/policy"
 	"github.com/semver-trust/semver-trust-go/internal/sshsig"
 )
@@ -108,7 +109,7 @@ func envFor(t *testing.T, repo string, persona Persona) *Env {
 	t.Helper()
 	raw, _ := os.ReadFile(filepath.Join(repo, ".semver-trust", "policy.toml"))
 	pol, perr := policy.Parse(raw)
-	git, err := LoadGitConfig(repo)
+	git, err := gitconfig.Load(repo)
 	if err != nil {
 		t.Fatal(err)
 	}

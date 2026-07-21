@@ -43,7 +43,7 @@ func catalogSoftTier() []Check {
 }
 
 // stagedPaths lists the paths staged in the index (git diff --cached), read
-// through the resolved git binary (ADR-042) — the same reader GitConfig uses.
+// through the resolved git binary (ADR-042) — the same reader gitconfig.Load uses.
 func stagedPaths(env *Env) ([]string, error) {
 	git := "git"
 	if env.Git != nil && env.Git.GitPath != "" {

@@ -60,6 +60,10 @@ func TestDoctorCommand(t *testing.T) {
 	if !strings.Contains(out2, "PASS  policy/parse") {
 		t.Errorf("a valid committed policy should PASS policy/parse:\n%s", out2)
 	}
+	// doctor surfaces the resolved git binary (PATH-hijack visibility, ADR-042).
+	if !strings.Contains(out2, "config/git-binary") || !strings.Contains(out2, "git binary: ") {
+		t.Errorf("doctor must report which git it would use:\n%s", out2)
+	}
 
 	// --json emits a structured report keyed by check id.
 	jout, _, _ := runRoot(t, "doctor", "--repo", repo, "--json")

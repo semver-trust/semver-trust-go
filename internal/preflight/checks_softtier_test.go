@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/semver-trust/semver-trust-go/internal/chain"
+	"github.com/semver-trust/semver-trust-go/internal/gitconfig"
 	"github.com/semver-trust/semver-trust-go/internal/sshsig"
 	"github.com/semver-trust/semver-trust-go/internal/verify"
 )
@@ -173,7 +174,7 @@ func TestPreAdoption(t *testing.T) {
 	}
 	run("add", ".")
 	run("-c", "commit.gpgsign=false", "commit", "-q", "-m", "init")
-	git, err := LoadGitConfig(bare)
+	git, err := gitconfig.Load(bare)
 	if err != nil {
 		t.Fatal(err)
 	}
