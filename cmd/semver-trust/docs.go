@@ -3,7 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
@@ -32,7 +36,29 @@ func newDocsCmd() *cobra.Command {
 			if err := doc.GenMarkdownTree(root, dir); err != nil {
 				return err
 			}
-			_, err := fmt.Fprintf(cmd.OutOrStdout(), "wrote CLI reference to %s\n", dir)
+			// cobra emits each page with a trailing blank line ("…\n\n");
+			// normalize every generated page to a single trailing newline so the
+			// committed reference carries no whitespace debt (git diff --check).
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				return err
+			}
+			for _, e := range entries {
+				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+					continue
+				}
+				p := filepath.Join(dir, e.Name())
+				data, rerr := os.ReadFile(p)
+				if rerr != nil {
+					return rerr
+				}
+				if trimmed := append(bytes.TrimRight(data, "\n"), '\n'); !bytes.Equal(trimmed, data) {
+					if werr := os.WriteFile(p, trimmed, 0o644); werr != nil {
+						return werr
+					}
+				}
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "wrote CLI reference to %s\n", dir)
 			return err
 		},
 	}

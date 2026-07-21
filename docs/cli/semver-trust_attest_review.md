@@ -67,4 +67,3 @@ semver-trust attest review [flags]
 ### SEE ALSO
 
 * [semver-trust attest](semver-trust_attest.md)	 - Emit signed SemVer-Trust attestations
-

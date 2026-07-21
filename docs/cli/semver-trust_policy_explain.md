@@ -24,4 +24,3 @@ semver-trust policy explain [flags]
 ### SEE ALSO
 
 * [semver-trust policy](semver-trust_policy.md)	 - Validate and explain the repository policy (§9)
-

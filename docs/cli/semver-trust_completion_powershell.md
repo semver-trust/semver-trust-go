@@ -28,4 +28,3 @@ semver-trust completion powershell [flags]
 ### SEE ALSO
 
 * [semver-trust completion](semver-trust_completion.md)	 - Generate the autocompletion script for the specified shell
-

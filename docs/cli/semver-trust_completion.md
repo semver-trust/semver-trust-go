@@ -21,4 +21,3 @@ See each sub-command's help for details on how to use the generated script.
 * [semver-trust completion fish](semver-trust_completion_fish.md)	 - Generate the autocompletion script for fish
 * [semver-trust completion powershell](semver-trust_completion_powershell.md)	 - Generate the autocompletion script for powershell
 * [semver-trust completion zsh](semver-trust_completion_zsh.md)	 - Generate the autocompletion script for zsh
-

@@ -27,6 +27,7 @@ latest, next, and tag.
 
 * [semver-trust attest](semver-trust_attest.md)	 - Emit signed SemVer-Trust attestations
 * [semver-trust completion](semver-trust_completion.md)	 - Generate the autocompletion script for the specified shell
+* [semver-trust doctor](semver-trust_doctor.md)	 - Diagnose this environment before verification (read-only)
 * [semver-trust latest](semver-trust_latest.md)	 - Print the highest version among the repository's tags (zero configuration)
 * [semver-trust list](semver-trust_list.md)	 - List the repository's tags as versions (zero configuration)
 * [semver-trust next](semver-trust_next.md)	 - Print the version that follows the latest tag (zero configuration)
@@ -36,4 +37,3 @@ latest, next, and tag.
 * [semver-trust tag](semver-trust_tag.md)	 - Create an annotated tag at HEAD: the given name or the computed next version
 * [semver-trust verify](semver-trust_verify.md)	 - Verify a release range's provenance and trust (spec §10 steps 1–7)
 * [semver-trust version](semver-trust_version.md)	 - Print the tool version and conformance pin
-
