@@ -179,9 +179,19 @@ func TestEnrollMultiTargetWriteRefused(t *testing.T) {
 		t.Errorf("want two printed lines, got %d:\n%s", n, out)
 	}
 
-	// But multi-target --write is refused deliberately, and writes nothing.
-	if _, _, werr := runRoot(t, "enroll", "--repo", repo, "--commit-key", commitPub, "--attest-key", attestPub, "--write"); werr == nil || !strings.Contains(werr.Error(), "one registry at a time") {
-		t.Errorf("multi-target --write = %v, want the one-at-a-time refusal", werr)
+	// Multi-target --write is refused deliberately, and writes nothing. --dry-run
+	// previews the real --write, so the same restriction applies to --write --dry-run
+	// AND to --dry-run alone — a preview must never advertise an operation the real
+	// path would reject.
+	for _, args := range [][]string{
+		{"--write"},
+		{"--write", "--dry-run"},
+		{"--dry-run"},
+	} {
+		full := append([]string{"enroll", "--repo", repo, "--commit-key", commitPub, "--attest-key", attestPub}, args...)
+		if _, _, werr := runRoot(t, full...); werr == nil || !strings.Contains(werr.Error(), "one registry at a time") {
+			t.Errorf("multi-target %v = %v, want the one-at-a-time refusal", args, werr)
+		}
 	}
 	if _, statErr := os.Stat(filepath.Join(repo, ".semver-trust", "allowed_signers")); !os.IsNotExist(statErr) {
 		t.Error("a refused multi-target --write must not write any registry")

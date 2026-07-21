@@ -83,7 +83,10 @@ creation, a strict re-parse of the whole result, and a temp-file + fsync + renam
 			// target's write failure would leave the first registry changed. Rather
 			// than fake all-or-nothing, --write handles exactly one registry — the
 			// human runs a separate --write per key so each atomic write stands alone.
-			if write && !dryRun && targets > 1 {
+			// --dry-run previews the real --write, so it enforces the SAME restriction:
+			// a multi-target write is refused whether or not it is a dry run, so the
+			// preview never advertises an operation the real path would reject.
+			if (write || dryRun) && targets > 1 {
 				return errors.New("enroll: --write handles one registry at a time (each write is atomic per file; a batch is not) — run a separate `enroll ... --write` per key")
 			}
 
