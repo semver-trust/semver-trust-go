@@ -86,7 +86,7 @@ reconciled to current `main`; carry them into the code:
   `buildFixtures(t)` helper (`internal/verify/fixtures_test.go:31`,
   `cmd/semver-trust/verify_test.go:94`). Ad-hoc signed history: `commitSignedCLI`
   (`cmd/semver-trust/release_test.go:583`); pure in-process signer: `ed25519.GenerateKey`
-  + `ssh.NewSignerFromKey` (`internal/sshsig/sign_test.go:19`). Vendored test keys under
+  with `ssh.NewSignerFromKey` (`internal/sshsig/sign_test.go:19`). Vendored test keys under
   `conformance/vendor/crypto/keys/`.
 - **CLI tests:** `newRootCmd()` (`cmd/semver-trust/root.go:18`) → `SetOut`/`SetErr` buffers
   → `SetArgs([...])` → `Execute()`; assert on the returned `error` (nil = success) and
@@ -144,6 +144,7 @@ Gating ADR: none. Existing tests are the safety net; no vector or behavior chang
   func LoadTrustMaterial(opts Options, pol *policy.Policy, repo string) (
       vcs.TrustedSigners, *attest.Verifier, error)
   ```
+
 - **Task 1.3 — `verify.ClassifyCommit` seam.** RED: `TestClassifyCommit` — per fixture
   (`signed-history` → pass row; `unknown-signer` / `tampered` → abort; `gpg-signed` →
   key-family), assert the `CommitReport` row and the `trust.Commit` classification. GREEN:
@@ -156,6 +157,7 @@ Gating ADR: none. Existing tests are the safety net; no vector or behavior chang
       store attest.GitRefStore, pol *policy.Policy, at time.Time) (
       CommitReport, trust.Commit, error)
   ```
+
 - **Verification:** `task test` fully green (unchanged behavior), `task lint`, `task vuln`.
   No `docs:cli` (no CLI surface change).
 
