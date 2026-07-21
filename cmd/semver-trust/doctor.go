@@ -80,6 +80,11 @@ run and restricts the run to a side-effect-free subset.`,
 			} else if data, readErr := os.ReadFile(abs); readErr == nil {
 				polRaw = data
 				pol, polErr = policy.Parse(polRaw)
+			} else if !errors.Is(readErr, os.ErrNotExist) {
+				// A present-but-unreadable policy (permission denied, is a
+				// directory) is a more precise diagnostic than "no policy at …";
+				// a plain absence falls through to that generic message.
+				polErr = readErr
 			}
 
 			persona, err := resolvePersona(personaStr, repoPath, pol)

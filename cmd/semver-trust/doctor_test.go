@@ -85,4 +85,14 @@ func TestDoctorCommand(t *testing.T) {
 	if !strings.Contains(fout, "pathfence") {
 		t.Errorf("a traversing --policy path should surface the fence refusal:\n%s", fout)
 	}
+
+	// A present-but-unreadable policy path (here, a directory) surfaces the read
+	// error, not the generic "no policy at …" message.
+	dout, _, derr := runRoot(t, "doctor", "--repo", repo, "--policy", ".semver-trust")
+	if derr == nil {
+		t.Error("--policy pointing at a directory should FAIL")
+	}
+	if !strings.Contains(dout, "could not be loaded") || strings.Contains(dout, "no policy at") {
+		t.Errorf("a directory policy path should surface the read error, not \"no policy\":\n%s", dout)
+	}
 }
