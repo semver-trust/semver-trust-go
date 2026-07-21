@@ -321,10 +321,21 @@ func TestEnrollmentLineCheck(t *testing.T) {
 	}
 	// A parse-valid line that OMITS namespaces= is unrestricted (trusted in every
 	// namespace) → FAIL, not a silent PASS.
-	noNS := "alex@example.com " + strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
-	env.EnrollmentLine = []byte(noNS + "\n")
+	key := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+	env.EnrollmentLine = []byte("alex@example.com " + key + "\n")
 	if r := checkEnrollmentLine(env); r.Severity != FAIL {
 		t.Errorf("enrollment-line (no namespace) = %s %q, want FAIL", r.Severity, r.Message)
+	}
+	// An explicitly EMPTY namespace (namespaces="") matches like an omitted list but
+	// authorizes no production operation → FAIL.
+	env.EnrollmentLine = []byte(`alex@example.com namespaces="" ` + key + "\n")
+	if r := checkEnrollmentLine(env); r.Severity != FAIL {
+		t.Errorf(`enrollment-line (namespaces="") = %s %q, want FAIL`, r.Severity, r.Message)
+	}
+	// A trailing-comma empty member (namespaces="git,") is rejected too.
+	env.EnrollmentLine = []byte(`alex@example.com namespaces="git," ` + key + "\n")
+	if r := checkEnrollmentLine(env); r.Severity != FAIL {
+		t.Errorf(`enrollment-line (namespaces="git,") = %s %q, want FAIL`, r.Severity, r.Message)
 	}
 	// No candidate → SKIP.
 	env.EnrollmentLine = nil

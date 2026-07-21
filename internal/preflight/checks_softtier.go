@@ -237,6 +237,14 @@ func checkEnrollmentLine(env *Env) Result {
 				"§10 step 3 (verify signature)", `add a quoted namespace, e.g. namespaces="git" (exactly what enroll emits)`)
 		}
 		for _, ns := range s.Namespaces {
+			// An empty namespace value — namespaces="" or a trailing comma
+			// (namespaces="git,") — matches like an omitted list but authorizes no
+			// production operation (commit/attestation use non-empty names). Reject it
+			// before resolving, so the check never PASSes a line the verifier rejects.
+			if ns == "" {
+				return fail(`candidate line has an empty namespace value (namespaces="" or a trailing comma) — no production verifier uses an empty namespace`,
+					"§10 step 3 (verify signature)", `scope each namespace to a non-empty name, e.g. namespaces="git"`)
+			}
 			if _, rerr := sshsig.Resolve(s.Key, signers, ns, env.At); rerr != nil {
 				return fail("candidate line parses but does not resolve in namespace "+ns+": "+rerr.Error(),
 					"§10 step 3 (verify signature)", "check the namespace and the enrollment validity window")
