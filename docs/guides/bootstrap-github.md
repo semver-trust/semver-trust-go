@@ -108,28 +108,34 @@ are the point.)
 
 ### Using a GPG key for commit signing instead
 
-If your commits are GPG-signed rather than SSH-signed, point the policy's
-`[identity.human]` at an armored keyring instead of the allowed-signers file
-(the attestation registry stays SSH — attestations are always SSHSIG, ADR-022,
-so the `--attest-key` enrollment above is unchanged):
+If your commits are GPG-signed rather than SSH-signed, make three substitutions
+to the SSH steps above — do them *instead of*, not in addition to. The
+attestation key stays SSH regardless (attestations are always SSHSIG, ADR-022),
+so `semver-trust enroll --attest-key … --write` is unchanged.
 
-```toml
-[identity.human]
-gpg_keyring = ".semver-trust/gpg-keyring.asc"
-```
+1. **In the policy, replace the `[identity.human]` block** — a `gpg_keyring` in
+   place of `allowed_signers` (a keyring, not an SSH registry). The rest of the
+   policy is identical:
 
-Export your **public** key to a file, then enroll it — `enroll` refuses
-private-key material and prints the identities it adds:
+   ```toml
+   [identity.human]
+   gpg_keyring = ".semver-trust/gpg-keyring.asc"
+   ```
 
-```sh
-gpg --armor --export <YOUR-GPG-KEY-ID> > dev.asc   # find it: gpg --list-secret-keys --keyid-format long
-semver-trust enroll --gpg-pubkey dev.asc --write
-```
+2. **Skip `enroll --commit-key`** (that enrolls an SSH commit key). Export your
+   **public** key to a file and enroll *that* into the keyring instead — `enroll`
+   refuses private-key material and prints the identities it adds:
 
-`setup` (next step) wires OpenPGP commit signing when you pass
-`--gpg-signing-key <YOUR-GPG-KEY-ID>` in place of `--signing-key`. The verifier
-defaults `--gpg-keyring` from the policy path, so GPG-signed commits verify with
-no extra flags — exactly as SSH-signed ones do.
+   ```sh
+   gpg --armor --export <YOUR-GPG-KEY-ID> > dev.asc   # find it: gpg --list-secret-keys --keyid-format long
+   semver-trust enroll --gpg-pubkey dev.asc --write
+   ```
+
+3. **In `setup` (next step), pass `--gpg-signing-key <YOUR-GPG-KEY-ID>`** in place
+   of `--signing-key`.
+
+The verifier defaults `--gpg-keyring` from the policy path, so GPG-signed commits
+verify with no extra flags — exactly as SSH-signed ones do.
 
 ## 3. Configure git, then make the founding commit
 
