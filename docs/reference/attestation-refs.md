@@ -40,7 +40,8 @@ git for-each-ref refs/attestations/
 ```
 
 In a clone you work in over time, configure the **fetch** side once so every
-future `git fetch`/`pull` carries evidence automatically:
+future `git fetch`/`pull` carries evidence automatically. `semver-trust setup`
+configures it for you; the equivalent by hand is:
 
 ```sh
 git config --add remote.origin.fetch 'refs/attestations/*:refs/attestations/*'

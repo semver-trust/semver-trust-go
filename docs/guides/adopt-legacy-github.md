@@ -63,8 +63,19 @@ enroll it:
 - Old release artifacts, keyservers, and the contributor themselves are all
   fair sources: you need only *public* keys.
 
+Fetch the key **to a file**, then let `semver-trust enroll` validate and add it —
+never pipe a URL straight into the registry. `enroll` refuses private-key
+material, requires at least one new key, and prints exactly *whose* authority you
+are adding, which is the whole point when the key came off a web address:
+
 ```console
-$ curl -s https://github.com/departed-dev.gpg >> .semver-trust/gpg-keyring.asc
+$ curl -s https://github.com/departed-dev.gpg > departed-dev.asc   # to a FILE — inspect before you trust it
+$ semver-trust enroll --repo . --gpg-pubkey departed-dev.asc --write
+--gpg-pubkey → .semver-trust/gpg-keyring.asc
+  key(s) for:          pat@example.com
+  new fingerprint(s):  43CF5CCB544B182851D01138A334D83F1C746A07
+  new principal(s):    pat@example.com
+wrote .semver-trust/gpg-keyring.asc — now commit it: git add .semver-trust && git commit -S
 $ git add .semver-trust/gpg-keyring.asc && git commit -m "chore: enroll Pat's historical signing key" -m "Provenance: human"
 $ semver-trust verify --repo . --from '' --to HEAD --verify-time 2026-07-13T00:00:00Z
 Error: §10 step 3 (verify signature): verify 9a4617d...: commit is unsigned
@@ -78,10 +89,12 @@ commit no key can ever fix. That's the boundary's job.
 If your history contains web-UI merges, two entries work together
 ([why both](../reference/trust-material.md#gpg-keyringasc--the-openpgp-counterpart)):
 
-- The key itself into the keyring — making those merges *verifiable*:
+- The key itself into the keyring — making those merges *verifiable* (same
+  fetch-to-a-file-then-`enroll` discipline as above):
 
   ```sh
-  curl -s https://github.com/web-flow.gpg >> .semver-trust/gpg-keyring.asc
+  curl -s https://github.com/web-flow.gpg > web-flow.asc
+  semver-trust enroll --gpg-pubkey web-flow.asc --write
   ```
 
 - Its identity into the policy — keeping them honestly *machine-class*

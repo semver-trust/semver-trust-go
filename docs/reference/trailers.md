@@ -101,7 +101,8 @@ generates. That gives each author class its own channel:
 Concretely:
 
 **The template carries the human default.** Commit a `.gitmessage` at the
-repository root and point config at it:
+repository root and point config at it — `semver-trust setup` sets
+`commit.template` for you when a `.gitmessage` is present, or by hand:
 
 ```sh
 git config commit.template .gitmessage
