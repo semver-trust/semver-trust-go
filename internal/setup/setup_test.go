@@ -184,6 +184,37 @@ func TestPlanCrossCheck(t *testing.T) {
 	if _, err := Compute(env2); err == nil || !strings.Contains(err.Error(), "distinctness") {
 		t.Errorf("an unreadable attestation registry must fail closed: %v", err)
 	}
+
+	// A declared registry with an EMPTY offered-key fingerprint (the boundary
+	// key-load failed) must also fail closed — never a silent bypass.
+	env3 := sshEnv()
+	env3.SigningKeyFingerprint = ""
+	env3.AttestationSignersDeclared = true
+	env3.AttestationFingerprints = []string{"SHA256:someone"}
+	if _, err := Compute(env3); err == nil || !strings.Contains(err.Error(), "distinctness") {
+		t.Errorf("an unfingerprintable signing key must fail closed, not bypass: %v", err)
+	}
+}
+
+// All-or-nothing: a signing-key conflict AND another conflict must be reported
+// together in one refusal (the signing-key conflict must not hide the rest).
+func TestPlanCombinedConflicts(t *testing.T) {
+	env := sshEnv()
+	env.Current = map[string]string{
+		keySigningKey: "/home/alex/.ssh/OLD.pub", // force-immune conflict
+		keyGPGFormat:  "openpgp",                 // a forceable conflict
+	}
+	// No --force: both are conflicts and BOTH must appear in the single refusal.
+	_, err := Compute(env)
+	if err == nil {
+		t.Fatal("a combined conflict must refuse")
+	}
+	if !strings.Contains(err.Error(), keySigningKey) {
+		t.Errorf("refusal must list the signing-key conflict:\n%s", err)
+	}
+	if !strings.Contains(err.Error(), keyGPGFormat) {
+		t.Errorf("all-or-nothing: refusal must ALSO list the gpg.format conflict:\n%s", err)
+	}
 }
 
 func TestPlanIncludeDowngrade(t *testing.T) {

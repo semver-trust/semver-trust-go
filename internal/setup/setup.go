@@ -128,15 +128,19 @@ func Compute(env Env) (*Plan, error) {
 	}
 
 	// ADR-022/040: the offered SSH signing key must not also be an attestation key.
+	// Fail CLOSED whenever the check cannot be run — an unreadable registry OR a
+	// signing key that could not be fingerprinted at the boundary — so a loading
+	// failure never silently bypasses the two-key invariant.
 	if env.SigningKey != "" && env.AttestationSignersDeclared {
 		if env.AttestationReadErr != nil {
 			return nil, fmt.Errorf("setup: cannot verify two-key distinctness — attestation_signers unreadable: %w", env.AttestationReadErr)
 		}
-		if env.SigningKeyFingerprint != "" {
-			for _, fp := range env.AttestationFingerprints {
-				if fp == env.SigningKeyFingerprint {
-					return nil, errors.New("setup: this key is enrolled as an attestation key; commit and attestation keys must be distinct (ADR-022/040)")
-				}
+		if env.SigningKeyFingerprint == "" {
+			return nil, errors.New("setup: cannot verify two-key distinctness — the offered signing key could not be fingerprinted; check the --signing-key .pub")
+		}
+		for _, fp := range env.AttestationFingerprints {
+			if fp == env.SigningKeyFingerprint {
+				return nil, errors.New("setup: this key is enrolled as an attestation key; commit and attestation keys must be distinct (ADR-022/040)")
 			}
 		}
 	}
@@ -163,19 +167,17 @@ func Compute(env Env) (*Plan, error) {
 				ch.Action = ActionSet
 			}
 		default:
-			// Conflict: currently set to a different value.
+			// Conflict: currently set (locally) to a different value.
 			if kv.key == keySigningKey {
 				// SU-11: the signing identity is NEVER overwritten by a flag — swapping
 				// a company-mandated key silently is the one overwrite no --force performs.
 				c := ch
-				c.Action = ActionForced // placeholder; treated as a hard conflict below
 				signingKeyConflict = &c
 				continue
 			}
 			if env.Force {
 				ch.Action = ActionForced
 			} else {
-				ch.Action = "conflict"
 				otherConflicts = append(otherConflicts, ch)
 				continue
 			}
@@ -183,19 +185,24 @@ func Compute(env Env) (*Plan, error) {
 		p.Changes = append(p.Changes, ch)
 	}
 
-	// Refusals for conflicts (write nothing). The signing-key conflict is always
-	// fatal and its message NEVER suggests --force.
-	if signingKeyConflict != nil {
-		return nil, fmt.Errorf("setup: refusing to change %s from %q to %q — the signing identity is never overwritten by a flag; if you truly mean to, do it by hand: git config %s %q",
-			keySigningKey, signingKeyConflict.Current, signingKeyConflict.Desired, keySigningKey, signingKeyConflict.Desired)
-	}
-	if len(otherConflicts) > 0 {
+	// All-or-nothing (ADR-039): any conflict refuses the whole run and the precomputed
+	// refusal lists EVERY conflict, writing nothing — the human fixes them all in one
+	// pass, never discovering a second conflict on a re-run. The signing-key line is
+	// force-immune and never suggests --force; the --force hint (if shown) is scoped to
+	// the non-identity conflicts.
+	if signingKeyConflict != nil || len(otherConflicts) > 0 {
 		var b strings.Builder
 		b.WriteString("setup: refusing to overwrite already-set config (write nothing):")
+		if signingKeyConflict != nil {
+			fmt.Fprintf(&b, "\n  %s is %q, want %q — the signing identity is never overwritten by a flag; change it by hand if you mean to: git config %s %q",
+				keySigningKey, signingKeyConflict.Current, signingKeyConflict.Desired, keySigningKey, signingKeyConflict.Desired)
+		}
 		for _, c := range otherConflicts {
 			fmt.Fprintf(&b, "\n  %s is %q, want %q", c.Key, c.Current, c.Desired)
 		}
-		b.WriteString("\nre-run with --force to overwrite these (does not apply to user.signingkey).")
+		if len(otherConflicts) > 0 {
+			b.WriteString("\nre-run with --force to overwrite the non-identity conflicts (never applies to user.signingkey).")
+		}
 		return nil, errors.New(b.String())
 	}
 
