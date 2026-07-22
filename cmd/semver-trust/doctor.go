@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/semver-trust/semver-trust-go/internal/chain"
+	"github.com/semver-trust/semver-trust-go/internal/gitconfig"
 	"github.com/semver-trust/semver-trust-go/internal/pathfence"
 	"github.com/semver-trust/semver-trust-go/internal/policy"
 	"github.com/semver-trust/semver-trust-go/internal/preflight"
@@ -64,7 +65,7 @@ run and restricts the run to a side-effect-free subset.`,
 				at = parsed
 			}
 
-			git, err := preflight.LoadGitConfig(repoPath)
+			git, err := gitconfig.Load(repoPath)
 			if err != nil {
 				return err
 			}

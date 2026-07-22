@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/semver-trust/semver-trust-go/internal/chain"
+	"github.com/semver-trust/semver-trust-go/internal/gitconfig"
 	"github.com/semver-trust/semver-trust-go/internal/policy"
 )
 
@@ -103,7 +104,7 @@ type Env struct {
 
 	// Git is this clone's configuration and environment facts, read through the
 	// git binary (ADR-042).
-	Git *GitConfig
+	Git *gitconfig.Config
 
 	// Descriptor is the out-of-band bootstrap descriptor (--bootstrap-descriptor),
 	// nil when none was supplied. chain/chain-head projects the accepted chain head

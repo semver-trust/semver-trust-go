@@ -39,8 +39,8 @@ Status of the milestones, updated as each lands.
 | M0 — governing ADRs | Done | [spec#49](https://github.com/semver-trust/spec/pull/49) |
 | M1 — P0 seam extraction | Done | #125 |
 | M2 — `doctor` | Done | #128, #130, #131 |
-| M3 — `enroll` | Done | #132, PR-B |
-| M4 — `setup` | Not started | — |
+| M3 — `enroll` | Done | #132, #133 |
+| M4 — `setup` | In progress | PR-A (gitconfig + writer) |
 
 M1 tasks: [x] 1.1 export `vcs.GitSSHNamespace` · [x] 1.2 `verify.LoadTrustMaterial` ·
 [x] 1.3 `verify.ClassifyCommit` · [x] 1.4 this progress section.
@@ -61,6 +61,14 @@ duplicate/cross-registry (ADR-040) refusal + `Resolve` self-check), `enroll` com
 (`internal/pgp` `Fingerprints()` + `ErrPrivateKeyMaterial`; `BuildGPG` — private-key refusal,
 ≥1-new, Principals diff; `--gpg-pubkey FILE|-`) + `simulate/enrollment-line` doctor check
 (`doctor --enrollment-line -`).
+
+M4 tasks: [x] PR-A promote the git-binary layer → `internal/gitconfig` (`Config`/`Load` reader +
+`Git` writer handle: `Set`/`Unset`/`AddFetch`/`FetchRefspecs`/`RemoteURL`), doctor
+`config/git-binary` check surfaces the resolved git path (PATH-hijack visibility, ADR-042) ·
+[ ] PR-B `internal/setup` planner (all-or-nothing conflicts, `--force` never `user.signingkey`,
+`config.RefSpec` idempotency, ADR-022 cross-check, euid/GIT_DIR/bare refusals) · [ ] PR-C
+`setup` command (env-echo + git-binary surface, `--dry-run` git-config commands, reversal receipt,
+worktree/bare handling).
 
 ## Corrections to the proposal (verified against `main`)
 

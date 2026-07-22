@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/semver-trust/semver-trust-go/internal/gitconfig"
 	"github.com/semver-trust/semver-trust-go/internal/pathfence"
 	"github.com/semver-trust/semver-trust-go/internal/sshsig"
 	"github.com/semver-trust/semver-trust-go/internal/verify"
@@ -21,6 +22,7 @@ func Catalog() []Check {
 	mc := []Persona{Maintainer, Contributor}
 	c := []Persona{Contributor}
 	checks := []Check{
+		{ID: "config/git-binary", Personas: all, Run: checkGitBinary},
 		{ID: "config/identity", Personas: mc, Run: checkConfigIdentity},
 		{ID: "config/signing-enabled", Personas: all, Run: checkSigningEnabled},
 		{ID: "config/commit-template", Personas: c, Run: checkCommitTemplate},
@@ -36,11 +38,22 @@ func Catalog() []Check {
 // includeCaveat discloses that a config-derived answer may live in an included
 // file go-git cannot see (SU-5); the git binary read it correctly, but the human
 // should know the value's provenance.
-func includeCaveat(g *GitConfig) string {
+func includeCaveat(g *gitconfig.Config) string {
 	if g != nil && g.HasIncludes {
 		return " (include/includeIf present; value may come from an included file)"
 	}
 	return ""
+}
+
+// checkGitBinary reports the resolved git executable every environment command
+// (doctor's own reads, and setup's writes) shells out to. Surfacing the absolute
+// path makes PATH hijack — the residual risk of shelling out (ADR-042) — visible: a
+// planted `git` earlier on PATH is checkable here rather than silent.
+func checkGitBinary(env *Env) Result {
+	if env.Git == nil || env.Git.GitPath == "" {
+		return skip("git binary not resolved")
+	}
+	return pass("git binary: " + env.Git.GitPath + includeCaveat(env.Git))
 }
 
 func checkConfigIdentity(env *Env) Result {
