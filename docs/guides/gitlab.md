@@ -34,9 +34,11 @@ git push origin 'refs/attestations/*:refs/attestations/*'
 git fetch origin 'refs/attestations/*:refs/attestations/*'
 ```
 
-In a clone you work in over time, set the fetch side once
-(`git config --add remote.origin.fetch 'refs/attestations/*:refs/attestations/*'`)
-so it rides every `git fetch`/`pull`
+In a clone you work in over time, `semver-trust setup --signing-key <key>.pub`
+sets the fetch side as part of wiring up commit signing (add `--remote <name>` if
+your GitLab remote isn't `origin`); or set only the refspec by hand with `git
+config --add remote.origin.fetch 'refs/attestations/*:refs/attestations/*'`.
+Either way it rides every `git fetch`/`pull`
 ([details](../reference/attestation-refs.md#moving-them)); an ephemeral CI
 checkout keeps the explicit fetch below.
 
