@@ -117,10 +117,14 @@ verification means.
 
 The flow for a new contributor:
 
-1. Contributor generates a signing key and configures git to sign with it
-   (see the [contributor guide](../guides/contributor.md)).
-2. Contributor opens a PR adding one line to `.semver-trust/allowed_signers`
-   with their principal and public key.
+1. Contributor configures this clone with `semver-trust setup` (reusing an
+   existing signing key, or a new one) and generates their enrollment with
+   `semver-trust enroll` — an SSH commit key into `allowed_signers`
+   (`enroll --commit-key <key>.pub`), or a GPG key into the `gpg_keyring`
+   (`enroll --gpg-pubkey <key>.asc`). The key family must match what the policy's
+   `[identity.human]` declares; see the [contributor guide](../guides/contributor.md).
+2. Contributor opens a PR adding that trust material to the registry the policy
+   names.
 3. A maintainer reviews the line against out-of-band knowledge of the person
    (this is the human judgment the cryptography anchors) and merges it through
    the normal meta-path gate.

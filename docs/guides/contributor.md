@@ -147,7 +147,23 @@ user.email`, so the registry identity equals your commit identity by
 construction. Open a PR adding that one line to `.semver-trust/allowed_signers`
 (or send a maintainer your *public* key) — `--write` appends it for you under an
 atomic writer, but it never stages, commits, or signs; the accountability act
-stays your signed commit. That PR is not paperwork — the maintainer merging it is
+stays your signed commit.
+
+**Signing commits with GPG instead?** Enroll your armored *public* key into the
+repository's keyring rather than the SSH registry — this works only where the
+policy declares a `gpg_keyring` under `[identity.human]` (check
+`.semver-trust/policy.toml`, or ask a maintainer; `enroll` refuses if it is
+absent). Your commit key's family must match what the repository accepts:
+
+```sh
+gpg --armor --export <YOUR-GPG-KEY-ID> > you.asc   # find the id: gpg --list-secret-keys --keyid-format long
+semver-trust enroll --gpg-pubkey you.asc
+```
+
+`enroll` prints the fingerprint and the identities it adds, refuses private-key
+material, and (with `--write`) appends to the keyring the policy names.
+
+That enrollment PR — SSH or GPG — is not paperwork: the maintainer merging it is
 asserting "this identity's signatures now count," which is why the registry sits
 behind the policy's meta-path gate. Details and the removal semantics are in
 [trust material](../reference/trust-material.md).
