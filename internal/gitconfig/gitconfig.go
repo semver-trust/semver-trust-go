@@ -11,6 +11,7 @@ package gitconfig
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -109,7 +110,9 @@ type Git struct {
 }
 
 // run executes `git -C repo <args...>` and returns trimmed stdout, or an error that
-// includes git's stderr.
+// includes git's stderr AND wraps the underlying exec error (%w) so a caller can
+// inspect the exit status via isUnsetKey — a genuinely-unset key must be
+// distinguishable from a real failure (broken config, invalid repo, exec error).
 func (g Git) run(args ...string) (string, error) {
 	cmd := exec.Command(g.Path, append([]string{"-C", g.Repo}, args...)...) //nolint:gosec // Path is a resolved git binary; args are command-controlled keys/values
 	var out, errBuf bytes.Buffer
@@ -117,11 +120,20 @@ func (g Git) run(args ...string) (string, error) {
 	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
 		if msg := strings.TrimSpace(errBuf.String()); msg != "" {
-			return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), msg)
+			return "", fmt.Errorf("git %s: %s: %w", strings.Join(args, " "), msg, err)
 		}
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return strings.TrimSpace(out.String()), nil
+}
+
+// isUnsetKey reports whether err is git config's expected "key not present" status —
+// exit code 1 from `git config --get`/`--get-all` — as opposed to a real failure
+// (invalid config = 3, not-a-repository = 128, an exec error, …). Only this status
+// may be normalized to "absent"; every other error must surface.
+func isUnsetKey(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 1
 }
 
 // Set writes a single repo-local config key (git config <key> <value>), under git's
@@ -146,11 +158,16 @@ func (g Git) AddFetch(remote, refspec string) error {
 }
 
 // FetchRefspecs returns a remote's configured fetch refspecs (git config --get-all).
-// An unset key is (nil, nil): no refspecs, not an error.
+// A genuinely-unset key is (nil, nil): no refspecs, not an error. Any OTHER failure
+// (broken config, invalid repo, exec error) is returned — the planner must not
+// mistake a broken state for "no refspecs" and then write from it.
 func (g Git) FetchRefspecs(remote string) ([]string, error) {
 	out, err := g.run("config", "--get-all", "remote."+remote+".fetch")
 	if err != nil {
-		return nil, nil //nolint:nilerr // an unset key exits non-zero; that is "none", not a failure
+		if isUnsetKey(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	if out == "" {
 		return nil, nil
@@ -159,11 +176,15 @@ func (g Git) FetchRefspecs(remote string) ([]string, error) {
 }
 
 // RemoteURL returns a remote's URL (git config --get remote.<remote>.url), or "" when
-// the remote is not configured — surfaced in setup's remote echo (SU-8).
+// the remote is genuinely not configured — surfaced in setup's remote echo (SU-8).
+// A non-"unset" failure is returned rather than masked as an absent remote.
 func (g Git) RemoteURL(remote string) (string, error) {
 	out, err := g.run("config", "--get", "remote."+remote+".url")
 	if err != nil {
-		return "", nil //nolint:nilerr // an absent remote is "" for the echo, not a hard failure
+		if isUnsetKey(err) {
+			return "", nil
+		}
+		return "", err
 	}
 	return out, nil
 }

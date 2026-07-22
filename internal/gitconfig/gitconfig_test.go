@@ -114,8 +114,27 @@ func TestGitWriter(t *testing.T) {
 		t.Errorf("FetchRefspecs = %v, want the appended attestation refspec", specs)
 	}
 
-	// A remote with no URL reads as "" (not an error).
+	// A genuinely-unset key reads as empty, not an error.
 	if url, err := g.RemoteURL("nonexistent"); err != nil || url != "" {
 		t.Errorf("RemoteURL(nonexistent) = %q, %v; want \"\", nil", url, err)
+	}
+	if specs, err := g.FetchRefspecs("nonexistent"); err != nil || specs != nil {
+		t.Errorf("FetchRefspecs(nonexistent) = %v, %v; want nil, nil", specs, err)
+	}
+}
+
+// A real failure (an invalid repository) must SURFACE as an error, never be
+// normalized to an absent key — else the planner would build a plan from a broken
+// state. git config -C <nonexistent> exits 128 (not the exit-1 "key not found").
+func TestGitWriterSurfacesRealFailures(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	bad := Git{Path: mustGitPath(t), Repo: t.TempDir() + "/does-not-exist"}
+	if _, err := bad.FetchRefspecs("origin"); err == nil {
+		t.Error("FetchRefspecs against an invalid repo must return an error, not (nil, nil)")
+	}
+	if _, err := bad.RemoteURL("origin"); err == nil {
+		t.Error("RemoteURL against an invalid repo must return an error, not (\"\", nil)")
 	}
 }
