@@ -27,46 +27,69 @@ Four things, and only the first two touch your daily flow:
 
 ## One-time setup
 
-Configure SSH commit signing and the repository's commit template (all local
-to the repo unless you `--global` it):
+You need a signing key; then one command wires up this clone. Generate a key
+if you don't already have one:
 
 ```sh
-# A signing key, if you don't already have one
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_signing -C 'you@example.com commit signing'
-
-# Sign every commit with it
-git config gpg.format ssh
-git config user.signingkey ~/.ssh/id_ed25519_signing.pub
-git config commit.gpgsign true
-
-# The repository's trailer template (pre-fills Provenance: human)
-git config commit.template .gitmessage
+ssh-keygen -t ed25519 -f ~/.ssh/semver-trust-commit -C 'you@example.com commit signing'
 ```
 
-Optionally enable the committed
-[commit-msg hook](../reference/trailers.md#the-commit-msg-hook) so a missing
-trailer can never leave your machine:
+`semver-trust setup` configures **this clone's git for you** — repo-local
+config only, never `--global`, never the working tree:
+
+```sh
+semver-trust setup --signing-key ~/.ssh/semver-trust-commit.pub
+```
+
+```text
+setup: repo ~/project  gitdir .git  git /opt/homebrew/bin/git  remote origin (https://github.com/acme/project.git)
+
+  set      gpg.format = ssh
+  set      user.signingkey = ~/.ssh/semver-trust-commit.pub
+  set      commit.gpgsign = true
+  set      commit.template = .gitmessage
+  set      gpg.ssh.allowedSignersFile = .semver-trust/allowed_signers
+  add      remote.origin.fetch += refs/attestations/*:refs/attestations/*
+
+applied. to reverse this setup:
+  git config --unset gpg.format
+  git config --unset user.signingkey
+  git config --unset commit.gpgsign
+  git config --unset commit.template
+  git config --unset gpg.ssh.allowedSignersFile
+  git config --unset remote.origin.fetch "refs/attestations/\*:refs/attestations/\*"
+```
+
+That one command sets SSH commit signing (`gpg.format`, `user.signingkey`,
+`commit.gpgsign`), the repository's trailer template (`commit.template`, so an
+interactive commit pre-fills `Provenance: human`), the local signer registry
+(`gpg.ssh.allowedSignersFile`, so `git log --format='%G?'` gives a verdict
+instead of an error), and the attestation-ref fetch refspec (so every
+`git fetch`/`pull` carries release and review evidence automatically — non-force,
+because those refs are content-addressed and append-only,
+[attestation refs](../reference/attestation-refs.md)). Its first line names the
+exact `git` it ran and it ends with the commands that reverse it, so nothing is a
+mystery; `--dry-run` prints the `git config` commands without running any. If a key
+is already set to a different value it refuses rather than clobber it — pass
+`--force` for the non-identity keys (never for `user.signingkey`).
+
+`setup` deliberately does **not** install the commit-msg hook — a trust tool
+should not write executable code that runs on your every commit. Enable the
+committed [commit-msg hook](../reference/trailers.md#the-commit-msg-hook) yourself,
+once, so a missing trailer can never leave your machine:
 
 ```sh
 git config core.hooksPath .githooks
 ```
 
-Configure the attestation-ref fetch once, so every `git fetch`/`pull` in this
-clone carries release and review evidence automatically (non-force, because
-those refs are content-addressed and append-only —
-[attestation refs](../reference/attestation-refs.md)):
+`semver-trust doctor` confirms the wiring at any point (and, until your key is
+enrolled below, tells you exactly that):
 
-```sh
-git config --add remote.origin.fetch 'refs/attestations/*:refs/attestations/*'
-```
-
-To see verification locally, point git at the repository's signer registry —
-until you do, `git log --format='%G?'` reports an error rather than a
-verdict:
-
-```sh
-git config gpg.ssh.allowedSignersFile .semver-trust/allowed_signers
-git log -1 --format='%G? by %GS'     # → G by you@example.com, once enrolled
+```text
+semver-trust doctor — persona: contributor
+  …
+  WARN  registry/principal-enrolled     dana@example.com is not yet enrolled in allowed_signers (expected until your enrollment PR merges)
+  WARN  keys/configured-vs-enrolled     configured signing key is not enrolled in allowed_signers (expected until your enrollment PR merges)
 ```
 
 ## The trailer on every commit
@@ -91,16 +114,30 @@ git commit -m "fix: reject empty policy keys" --trailer "Provenance: human"
 ## Getting your key enrolled
 
 Your signatures count once your key is in the repository's signer registry.
-Send a maintainer your *public* key, or open the PR yourself: one line in
-`.semver-trust/allowed_signers`,
+`semver-trust enroll` generates the exact registry line — you never hand-type it
+(shell quoting silently eats `namespaces="git"`, and a mistyped namespace is a
+signature that never verifies):
 
-```text
-you@example.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...
+```sh
+semver-trust enroll --commit-key ~/.ssh/semver-trust-commit.pub
 ```
 
-That PR is not paperwork — the maintainer merging it is asserting "this
-identity's signatures now count," which is why the registry sits behind the
-policy's meta-path gate. Details and the removal semantics are in
+```text
+dana@example.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKWHj9drnStLr+/FPTXapx7TWea4XaFcR5V2YPSjY2hX
+
+principal: dana@example.com (from git user.email)
+--commit-key → .semver-trust/allowed_signers  (fingerprint SHA256:e9h6qGNgJPV26/o79D0KPM1HL5VKWO/K4EqE6T6THGo)
+```
+
+The first line — raw registry bytes on stdout — is what goes in the PR; the
+guidance below it prints on stderr. The principal defaults to your `git
+user.email`, so the registry identity equals your commit identity by
+construction. Open a PR adding that one line to `.semver-trust/allowed_signers`
+(or send a maintainer your *public* key) — `--write` appends it for you under an
+atomic writer, but it never stages, commits, or signs; the accountability act
+stays your signed commit. That PR is not paperwork — the maintainer merging it is
+asserting "this identity's signatures now count," which is why the registry sits
+behind the policy's meta-path gate. Details and the removal semantics are in
 [trust material](../reference/trust-material.md).
 
 ## When you forget
