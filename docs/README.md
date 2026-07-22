@@ -29,9 +29,9 @@ plain language.
   step, and abort vs T0.
 - [CLI reference](cli/semver-trust.md) — generated flag-level documentation
   for every command, including the bootstrap family: `setup` (configure this
-  clone's git), `enroll` (generate a signer-registry line), and `doctor`
-  (read-only environment diagnosis). The persona guides above walk them in
-  context.
+  clone's repo-local git), `enroll` (generate signer-registry material — an SSH
+  allowed-signers line or a GPG keyring block), and `doctor` (read-only
+  environment diagnosis). The persona guides above walk them in context.
 
 ## This repository
 
