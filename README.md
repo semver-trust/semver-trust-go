@@ -20,11 +20,12 @@ zero-tooling guarantee ([conformance coverage](docs/conformance-coverage.md)).
 
 ## Status
 
-`v0.1.0` is released. This is the official Go reference implementation of
-SemVer-Trust. It vendors the specification's **draft v0.10** conformance
-vectors (digest-pinned — see [the spec repository](https://github.com/semver-trust/spec));
-which protocol capabilities are enforced versus still being adopted is tracked
-in [docs/conformance-coverage.md](docs/conformance-coverage.md).
+The latest release is **`v0.3.0`** (its full release line is described below).
+This is the official Go reference implementation of SemVer-Trust. It vendors the
+specification's **draft v0.10** conformance vectors (digest-pinned — see [the spec
+repository](https://github.com/semver-trust/spec)); which protocol capabilities
+are enforced versus still being adopted is tracked in
+[docs/conformance-coverage.md](docs/conformance-coverage.md).
 
 The repository releases *itself* under the scheme it implements. Its published
 line runs `v0.1.0`–`v0.2.1` on the default `release/v0.1` chain, then **continues
