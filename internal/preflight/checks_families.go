@@ -229,7 +229,7 @@ func checkBotAccounts(env *Env) Result {
 	}
 	if len(missing) > 0 {
 		return warn("bot_accounts not enrolled as signers: "+strings.Join(missing, ", ")+" — platform merges from these classify unknown-signer",
-			"enroll the bot account(s) in allowed_signers")
+			"enroll the bot account(s) in allowed_signers or gpg_keyring, or drop them from [identity.agent] bot_accounts if you never merge through the web UI")
 	}
 	return pass(fmt.Sprintf("%d bot account(s) enrolled", len(bots)))
 }

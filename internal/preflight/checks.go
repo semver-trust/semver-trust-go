@@ -119,7 +119,22 @@ func checkPolicyParse(env *Env) Result {
 		return fail("no policy at "+env.PolicyPath,
 			"§10 step 1 (load policy)", "add "+env.PolicyPath)
 	}
-	if head, err := verify.ReadTreeFile(env.Repo, "HEAD", env.PolicyPath); err == nil && !bytes.Equal(head, env.PolicyRaw) {
+	head, present, err := verify.ReadTreeFileIfPresent(env.Repo, "HEAD", env.PolicyPath)
+	if err != nil {
+		// Not the fresh-repo case: the repository would not open, or an object
+		// was unreadable/corrupt. The comparison could not run, so say so with the
+		// error rather than falsely asserting either "matches HEAD" or "not yet
+		// committed".
+		return warn("policy parses, but its HEAD comparison could not run: "+err.Error(),
+			"inspect the repository/object error above, then re-run doctor")
+	}
+	if !present {
+		// No committed policy to compare against yet — a fresh repo with no
+		// commits, or a policy not yet in HEAD's tree. Parsing succeeded, but no
+		// drift check ran, so do not claim it matches HEAD.
+		return pass("policy parses (not yet committed — no HEAD version to compare against)")
+	}
+	if !bytes.Equal(head, env.PolicyRaw) {
 		return warn("working-tree policy differs from HEAD — verify reads the range tip's tree, not your checkout",
 			"commit the policy change before relying on it")
 	}
@@ -148,7 +163,19 @@ func checkRegistryParse(env *Env) Result {
 		return fail("allowed_signers does not parse: "+err.Error(),
 			"§10 step 3 (verify signature)", "fix "+path)
 	}
-	if head, err := verify.ReadTreeFile(env.Repo, "HEAD", path); err == nil && !bytes.Equal(head, data) {
+	head, present, err := verify.ReadTreeFileIfPresent(env.Repo, "HEAD", path)
+	if err != nil {
+		// Not the fresh-repo case: the repository would not open, or an object was
+		// unreadable/corrupt. Surface it rather than claim a comparison happened.
+		return warn("allowed_signers parses, but its HEAD comparison could not run: "+err.Error(),
+			"inspect the repository/object error above, then re-run doctor")
+	}
+	if !present {
+		// No committed registry to compare against yet (no commits, or not yet in
+		// HEAD's tree). Parsing succeeded; no drift check ran.
+		return pass("allowed_signers parses (not yet committed — no HEAD version to compare against)")
+	}
+	if !bytes.Equal(head, data) {
 		return warn("working-tree allowed_signers differs from HEAD — verify reads the tip's tree",
 			"commit the registry change")
 	}
