@@ -160,13 +160,102 @@ func TestRegistryChecks(t *testing.T) {
 	if r := checkPrincipalEnrolled(envFor(t, repo, Maintainer)); r.Severity != PASS {
 		t.Errorf("principal-enrolled = %s %q, want PASS", r.Severity, r.Message)
 	}
-	// ci-bot bot account is not enrolled → WARN.
+	// ci-bot bot account is not enrolled → WARN, and the fix must name both the
+	// keyring option and dropping the declaration — not just allowed_signers (a
+	// GPG-signing repo has no allowed_signers to enroll into, and a repo that
+	// never web-UI-merges should simply drop the entry).
 	if r := checkBotAccounts(envFor(t, repo, Maintainer)); r.Severity != WARN {
 		t.Errorf("bot-accounts = %s %q, want WARN", r.Severity, r.Message)
+	} else if !strings.Contains(r.Fix, "gpg_keyring") || !strings.Contains(r.Fix, "bot_accounts") {
+		t.Errorf("bot-accounts fix should offer the keyring and drop-the-declaration options; Fix=%q", r.Fix)
 	}
 	// no gpg_keyring declared → SKIP.
 	if r := checkGPGKeyring(envFor(t, repo, Maintainer)); r.Severity != SKIP {
 		t.Errorf("gpg-keyring = %s, want SKIP (none declared)", r.Severity)
+	}
+}
+
+// noCommitRepo builds a repo whose policy + allowed_signers exist on disk and
+// parse, but which has no commit yet — HEAD does not resolve, so the drift
+// comparison against HEAD cannot run (the fresh-bootstrap case a maintainer
+// hits before the founding commit).
+func noCommitRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	run := func(args ...string) {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("config", "user.email", "alex@example.com")
+	run("config", "user.name", "Alex")
+
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, err := sshsig.FormatEnrollmentLine("alex@example.com", "git", signer.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(rel, content string) {
+		p := filepath.Join(repo, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".semver-trust/policy.toml", `[policy]
+version   = "0.1"
+threshold = "T2"
+strategy  = "demote"
+
+[meta]
+paths          = [".semver-trust/**"]
+required_level = "T2"
+
+[identity]
+attestation_signers = ".semver-trust/attestation_signers"
+
+[identity.human]
+allowed_signers = ".semver-trust/allowed_signers"
+
+[trailers]
+require = true
+
+[graph]
+adapter = "none"
+`)
+	write(".semver-trust/allowed_signers", line+"\n")
+	return repo
+}
+
+// TestParseChecksNoCommits pins the fresh-bootstrap case: policy and registry
+// parse, but with no HEAD the drift check cannot run — so the PASS message must
+// not claim "matches HEAD" (nothing was compared).
+func TestParseChecksNoCommits(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	env := envFor(t, noCommitRepo(t), Maintainer)
+
+	if r := checkPolicyParse(env); r.Severity != PASS {
+		t.Errorf("policy/parse (no commits) = %s %q, want PASS", r.Severity, r.Message)
+	} else if strings.Contains(r.Message, "matches HEAD") {
+		t.Errorf("policy/parse (no commits) must not claim 'matches HEAD' — nothing was compared; Message=%q", r.Message)
+	}
+
+	if r := checkRegistryParse(env); r.Severity != PASS {
+		t.Errorf("registry/parse (no commits) = %s %q, want PASS", r.Severity, r.Message)
+	} else if strings.Contains(r.Message, "matches HEAD") {
+		t.Errorf("registry/parse (no commits) must not claim 'matches HEAD' — nothing was compared; Message=%q", r.Message)
 	}
 }
 

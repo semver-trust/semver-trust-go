@@ -119,7 +119,14 @@ func checkPolicyParse(env *Env) Result {
 		return fail("no policy at "+env.PolicyPath,
 			"§10 step 1 (load policy)", "add "+env.PolicyPath)
 	}
-	if head, err := verify.ReadTreeFile(env.Repo, "HEAD", env.PolicyPath); err == nil && !bytes.Equal(head, env.PolicyRaw) {
+	head, err := verify.ReadTreeFile(env.Repo, "HEAD", env.PolicyPath)
+	if err != nil {
+		// No committed policy to compare against yet — a fresh repo with no
+		// commits, or a policy not yet in HEAD's tree. Parsing succeeded, but no
+		// drift check ran, so do not claim it matches HEAD.
+		return pass("policy parses (not yet committed — no HEAD version to compare against)")
+	}
+	if !bytes.Equal(head, env.PolicyRaw) {
 		return warn("working-tree policy differs from HEAD — verify reads the range tip's tree, not your checkout",
 			"commit the policy change before relying on it")
 	}
@@ -148,7 +155,13 @@ func checkRegistryParse(env *Env) Result {
 		return fail("allowed_signers does not parse: "+err.Error(),
 			"§10 step 3 (verify signature)", "fix "+path)
 	}
-	if head, err := verify.ReadTreeFile(env.Repo, "HEAD", path); err == nil && !bytes.Equal(head, data) {
+	head, err := verify.ReadTreeFile(env.Repo, "HEAD", path)
+	if err != nil {
+		// No committed registry to compare against yet (no commits, or not yet in
+		// HEAD's tree). Parsing succeeded; no drift check ran.
+		return pass("allowed_signers parses (not yet committed — no HEAD version to compare against)")
+	}
+	if !bytes.Equal(head, data) {
 		return warn("working-tree allowed_signers differs from HEAD — verify reads the tip's tree",
 			"commit the registry change")
 	}
