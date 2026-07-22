@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -73,11 +74,9 @@ git config commands. Every run ends by printing the commands that reverse it.`,
 			if err != nil {
 				return fmt.Errorf("setup: reading remote %q fetch: %w", remote, err)
 			}
-			pol := loadSetupPolicy(repoPath, policyPath) // optional; nil if absent/unparseable
 
 			env := setup.Env{
 				Config:              cfg,
-				Policy:              pol,
 				Current:             currents,
 				SigningKey:          signingKey,
 				GPGSigningKey:       gpgKey,
@@ -91,24 +90,43 @@ git config commands. Every run ends by printing the commands that reverse it.`,
 				GitConfigEnv:        gitConfigEnvSet(),
 			}
 
+			// The environment echo is the FIRST line of EVERY run, printed immediately
+			// after the git facts are loaded — BEFORE the policy, the key, or the plan —
+			// so EVERY refusal (a malformed policy, a fenced path, or a conflict / bare /
+			// root / env / two-key refusal) still shows which repo / gitdir / git-binary /
+			// remote it acted on.
+			w := &errWriter{w: cmd.OutOrStdout()}
+			printEnvEcho(w, env)
+
+			// A policy is optional (setup configures git, not trust material), but a
+			// PRESENT policy that cannot be loaded is surfaced, not silently dropped —
+			// a dropped policy would skip the ADR-022 cross-check it declares.
+			pol, err := loadSetupPolicy(repoPath, policyPath)
+			if err != nil {
+				return err
+			}
+			env.Policy = pol
+
 			// SSH mode: fingerprint the offered key (for the ADR-022 cross-check) and
-			// resolve the allowed-signers registry to wire.
+			// resolve the allowed-signers registry to wire (fenced).
 			if signingKey != "" {
 				pub, perr := readPubKey(expandTilde(signingKey))
 				if perr != nil {
 					return fmt.Errorf("--signing-key %q: %w", signingKey, perr)
 				}
 				env.SigningKeyFingerprint = ssh.FingerprintSHA256(pub)
-				env.AllowedSignersPath, env.AllowedSignersExists = resolveAllowedSigners(repoPath, pol)
+				if env.AllowedSignersPath, env.AllowedSignersExists, err = resolveAllowedSigners(repoPath, pol); err != nil {
+					return err
+				}
 			}
 			env.AttestationSignersDeclared, env.AttestationFingerprints, env.AttestationReadErr = attestationFacts(repoPath, pol)
 
 			plan, err := setup.Compute(env)
 			if err != nil {
-				return err // a refusal — cobra prints it, main exits 1
+				return err // a refusal — the echo is already on stdout; cobra prints this on stderr
 			}
 
-			return renderSetup(cmd, env, plan, dryRun, git)
+			return renderPlan(w, plan, dryRun, git)
 		},
 	}
 
@@ -123,24 +141,25 @@ git config commands. Every run ends by printing the commands that reverse it.`,
 	return cmd
 }
 
-// renderSetup writes the environment echo, the plan, and either the dry-run commands
-// or the applied receipt.
-func renderSetup(cmd *cobra.Command, env setup.Env, plan *setup.Plan, dryRun bool, git gitconfig.Git) error {
-	w := &errWriter{w: cmd.OutOrStdout()}
-
-	// The environment echo is the FIRST line of every run (dry-run included) — the
-	// audit trail: which repo, which gitdir, which git binary (PATH-hijack surface),
-	// and which remote/URL (SU-8).
+// printEnvEcho writes the environment echo — the FIRST line of every run, printed
+// before the plan is computed so it appears on refusals too: the audit trail of which
+// repo, gitdir, git binary (the PATH-hijack surface), and remote/URL (SU-8) the run
+// acted on, plus the linked-worktree shared-config disclosure.
+func printEnvEcho(w *errWriter, env setup.Env) {
 	url := env.RemoteURL
 	if url == "" {
 		url = "(no url)"
 	}
 	w.printf("setup: repo %s  gitdir %s  git %s  remote %s (%s)\n",
 		orDot(env.Config.TopLevel), orDot(env.Config.GitDir), env.Config.GitPath, env.Remote, url)
-
 	if isLinkedWorktree(env.Config) {
 		w.printf("note: linked worktree — repo-local config is shared across all worktrees of this repository\n")
 	}
+}
+
+// renderPlan writes the plan and either the dry-run commands or the applied receipt.
+// The environment echo has already been printed (printEnvEcho, before Compute).
+func renderPlan(w *errWriter, plan *setup.Plan, dryRun bool, git gitconfig.Git) error {
 	for _, warn := range plan.Warnings {
 		w.printf("warn: %s\n", warn)
 	}
@@ -188,34 +207,47 @@ func renderSetup(cmd *cobra.Command, env setup.Env, plan *setup.Plan, dryRun boo
 	return w.err
 }
 
-// loadSetupPolicy fences + parses the working-tree policy; setup does not require one
-// (it configures git, not trust material), so any failure yields nil — the policy
-// only informs the allowed-signers path and the ADR-022 cross-check.
-func loadSetupPolicy(repo, policyPath string) *policy.Policy {
+// loadSetupPolicy fences + parses the working-tree policy. A policy is optional — a
+// genuine absence (os.ErrNotExist) is (nil, nil) — but a PRESENT policy that cannot be
+// loaded (a fence refusal, a read error, or a parse error) is surfaced, never dropped:
+// silently discarding a policy that declares attestation_signers would skip the ADR-022
+// two-key cross-check it governs.
+func loadSetupPolicy(repo, policyPath string) (*policy.Policy, error) {
 	abs, err := pathfence.Resolve(repo, policyPath)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("setup: policy path refused: %w", err)
 	}
 	data, err := os.ReadFile(abs)
 	if err != nil {
-		return nil
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil // no policy → setup configures git, not trust material
+		}
+		return nil, fmt.Errorf("setup: cannot read policy %s: %w", policyPath, err)
 	}
 	pol, err := policy.Parse(data)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("setup: policy does not parse: %w", err)
 	}
-	return pol
+	return pol, nil
 }
 
 // resolveAllowedSigners returns the allowed-signers registry path to wire into
 // gpg.ssh.allowedSignersFile (from the policy, else the convention) and whether that
-// file exists — it is set only when present (SSH mode).
-func resolveAllowedSigners(repo string, pol *policy.Policy) (path string, exists bool) {
+// file exists — set only when present (SSH mode). The policy-named path is FENCED
+// before it is touched: a hostile "../../outside/allowed_signers" or a symlink must
+// not point local git's signature-verification authority outside the repository. The
+// value written back is the safe repo-relative string, only after validation.
+func resolveAllowedSigners(repo string, pol *policy.Policy) (path string, exists bool, err error) {
 	path = ".semver-trust/allowed_signers"
 	if pol != nil && pol.Identity.Human.AllowedSigners != "" {
 		path = pol.Identity.Human.AllowedSigners
 	}
-	return path, fileExists(repo, path)
+	abs, ferr := pathfence.Resolve(repo, path)
+	if ferr != nil {
+		return "", false, fmt.Errorf("setup: allowed_signers path refused: %w", ferr)
+	}
+	info, serr := os.Stat(abs)
+	return path, serr == nil && !info.IsDir(), nil
 }
 
 // attestationFacts reports whether the policy declares attestation_signers, the

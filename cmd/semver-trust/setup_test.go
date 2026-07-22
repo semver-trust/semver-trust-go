@@ -157,6 +157,85 @@ func TestSetupCrossCheck(t *testing.T) {
 	}
 }
 
+// policyWithAllowedSigners is a minimal valid policy declaring a custom
+// identity.human.allowed_signers path (to exercise the fence).
+func policyWithAllowedSigners(path string) string {
+	return `[policy]
+version   = "0.1"
+threshold = "T2"
+strategy  = "demote"
+
+[meta]
+paths          = [".semver-trust/**"]
+required_level = "T3"
+
+[identity.human]
+allowed_signers = "` + path + `"
+`
+}
+
+// A PRESENT policy that cannot be loaded must be surfaced, not silently dropped
+// (dropping one that declared attestation_signers would skip the ADR-022 check).
+func TestSetupMalformedPolicyRefused(t *testing.T) {
+	repo, pub := setupRepo(t)
+	doctorWriteFile(t, filepath.Join(repo, ".semver-trust", "policy.toml"), "this is not valid toml {{{")
+
+	_, _, err := runRoot(t, "setup", "--repo", repo, "--signing-key", pub)
+	if err == nil || !strings.Contains(err.Error(), "policy") {
+		t.Fatalf("a malformed present policy must refuse: %v", err)
+	}
+	if gitLocal(t, repo, "gpg.format") != "" {
+		t.Error("a refused run must write nothing")
+	}
+}
+
+// The policy-named allowed_signers path is fenced before use — a traversing or
+// symlinked value must not point local git's verification authority outside the repo.
+func TestSetupFencesAllowedSignersPath(t *testing.T) {
+	// Traversal.
+	repo, pub := setupRepo(t)
+	doctorWriteFile(t, filepath.Join(repo, ".semver-trust", "policy.toml"),
+		policyWithAllowedSigners("../../outside/allowed_signers"))
+	if _, _, err := runRoot(t, "setup", "--repo", repo, "--signing-key", pub); err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Errorf("a traversing allowed_signers path must be refused: %v", err)
+	}
+	if gitLocal(t, repo, "gpg.format") != "" {
+		t.Error("a refused run must write nothing")
+	}
+
+	// Symlink escaping the repo.
+	repo2, pub2 := setupRepo(t)
+	outside := filepath.Join(t.TempDir(), "outside_signers")
+	if err := os.WriteFile(outside, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo2, ".semver-trust"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repo2, ".semver-trust", "linked_signers")); err != nil {
+		t.Skip("symlinks unsupported on this platform")
+	}
+	doctorWriteFile(t, filepath.Join(repo2, ".semver-trust", "policy.toml"),
+		policyWithAllowedSigners(".semver-trust/linked_signers"))
+	if _, _, err := runRoot(t, "setup", "--repo", repo2, "--signing-key", pub2); err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Errorf("a symlinked allowed_signers path must be refused: %v", err)
+	}
+}
+
+// The env-echo audit line is the first line of EVERY run, including refusals.
+func TestSetupEnvEchoOnRefusal(t *testing.T) {
+	repo, pub := setupRepo(t)
+	gitCLI(t, repo, "config", "gpg.format", "openpgp") // forces a conflict refusal
+
+	out, _, err := runRoot(t, "setup", "--repo", repo, "--signing-key", pub)
+	if err == nil {
+		t.Fatal("expected a conflict refusal")
+	}
+	if !strings.Contains(out, "setup: repo ") || !strings.Contains(out, " git ") {
+		t.Errorf("the env-echo audit line must appear on stdout even on a refusal:\n%s", out)
+	}
+}
+
 func TestSetupBareRefused(t *testing.T) {
 	bare := t.TempDir()
 	gitCLI(t, bare, "init", "--bare", "-q")
